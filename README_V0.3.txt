@@ -2,11 +2,9 @@ Nível do Rio — v0.3 patch
 
 Mudanças:
 - abandona scraping HTML do portal para os dados principais;
-- usa API JSON public.asthon.com.br;
+- usa dados públicos da Defesa Civil;
 - usa station_id fixo para as três pontes;
-- /public/panel como fonte principal;
-- /public/stations/live como fallback para níveis;
-- /public/dams para barragens;
+- mantém níveis e barragens na camada isolada de dados;
 - mantém cache e histórico local;
 - exibe erro resumido da API durante este teste;
 - preserva atualização do app a cada 5 min e widget em até 30 min;

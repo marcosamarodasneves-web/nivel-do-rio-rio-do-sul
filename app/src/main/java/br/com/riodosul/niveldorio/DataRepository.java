@@ -110,7 +110,7 @@ public final class DataRepository {
                     "updated_at", "timestamp", "datetime");
 
             String status = firstString(station, "status", "alert_status", "level_status");
-            if (status == null || status.trim().isEmpty()) {
+            if (status == null || status.trim().isEmpty() || isNumericStatus(status)) {
                 status = statusFromLevel(level);
             }
 
@@ -396,6 +396,10 @@ public final class DataRepository {
         if (low.contains("alert")) return "Alerta";
         if (low.contains("emerg")) return "Emergência";
         return s.isEmpty() ? "Normal" : s;
+    }
+
+    private static boolean isNumericStatus(String status) {
+        return status != null && status.trim().matches("[0-9]+([.,][0-9]+)?");
     }
 
     private static String statusFromLevel(double level) {

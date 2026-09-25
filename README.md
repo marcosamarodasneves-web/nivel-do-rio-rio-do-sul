@@ -24,12 +24,7 @@ Protótipo nativo Android sem bibliotecas de terceiros em runtime.
 
 ### Importante sobre a fonte
 
-A leitura está isolada em `DataRepository.java` e usa os endpoints JSON públicos atuais do portal:
-
-- `https://public.asthon.com.br/public/panel?city_id=4214805&include_geometry=false`
-- `https://public.asthon.com.br/public/dams?city_id=4214805`
-
-O parser das barragens considera os campos atuais `nivel_m`, `percent_use`, `comportas_abertas`, `comportas_total` e `comportas[].aberta`. Os estados individuais também são preservados no cache para a tela continuar funcionando sem rede.
+A leitura está isolada em `DataRepository.java` e utiliza os dados públicos da Defesa Civil. Os estados individuais das comportas também são preservados no cache para a tela continuar funcionando sem rede.
 
 ### Importante sobre o contador
 
@@ -49,4 +44,4 @@ O APK sairá normalmente em:
 
 ## Observação sobre o gráfico
 
-O gráfico do protótipo é histórico **coletado no aparelho** (até 24 h), para não associar indevidamente dados de outra estação à ponte selecionada. Assim que for confirmado um endpoint de histórico municipal por estação, o `HistoryStore` pode ser alimentado diretamente por ele.
+O gráfico do protótipo é histórico **coletado no aparelho** (até 24 h), para não associar indevidamente dados de outra estação à ponte selecionada.

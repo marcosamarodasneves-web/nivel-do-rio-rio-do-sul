@@ -29,9 +29,10 @@ public class PullRefreshLayout extends FrameLayout {
         spinner = new ProgressBar(context);
         spinner.setIndeterminate(true);
         spinner.setVisibility(View.GONE);
-        LayoutParams params = new LayoutParams((int) (36 * density), (int) (36 * density));
-        params.gravity = android.view.Gravity.TOP | android.view.Gravity.CENTER_HORIZONTAL;
-        params.topMargin = (int) (8 * density);
+        LayoutParams params = new LayoutParams((int) (56 * density), (int) (56 * density));
+        params.gravity = android.view.Gravity.CENTER;
+        spinner.setScaleX(1.35f);
+        spinner.setScaleY(1.35f);
         addView(spinner, params);
     }
 

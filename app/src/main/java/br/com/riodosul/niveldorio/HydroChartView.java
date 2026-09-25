@@ -58,12 +58,13 @@ public class HydroChartView extends View {
         float w = getWidth();
         float h = getHeight();
         paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.WHITE);
+        paint.setColor(panelColor(currentRiverLevel));
         c.drawRoundRect(new RectF(0, 0, w, h), dp(16), dp(16), paint);
 
         float pad = dp(16);
         text(c, "Monitoramento", pad, pad + dp(16), 16, Color.rgb(15, 47, 82), true);
         text(c, "Rio, barragens e comportas", pad, pad + dp(36), 12, Color.rgb(102, 112, 133), false);
+        text(c, alertForLevel(currentRiverLevel), w - pad - dp(76), pad + dp(20), 11, alertColor(currentRiverLevel), true);
         drawLegend(c, w - pad - dp(150), pad + dp(8));
 
         float chartTop = pad + dp(52);
@@ -96,6 +97,7 @@ public class HydroChartView extends View {
             float y = graphTop + (graphBottom - graphTop) * i / 3f;
             c.drawLine(graphLeft, y, graphRight, y, stroke);
         }
+        drawAlertBands(c, graphLeft, graphRight, graphTop, graphBottom);
 
         if (riverSamples.size() < 2) {
             Double current = currentRiverLevel != null ? currentRiverLevel
@@ -110,16 +112,7 @@ public class HydroChartView extends View {
             }
             return;
         }
-        double min = Double.MAX_VALUE, max = -Double.MAX_VALUE;
-        for (Sample s : riverSamples) {
-            min = Math.min(min, s.value);
-            max = Math.max(max, s.value);
-        }
-        if (max - min < 0.4) { max += 0.2; min -= 0.2; }
-        double range = max - min;
-        min = Math.max(0, min - range * 0.12);
-        max += range * 0.12;
-        range = max - min;
+        double min = 0.0, max = 8.0, range = max - min;
         text(c, String.format(Locale.US, "%.2f m", max), left, graphTop + dp(4), 9, Color.rgb(102, 112, 133), false);
         text(c, String.format(Locale.US, "%.2f m", min), left, graphBottom, 9, Color.rgb(102, 112, 133), false);
 
@@ -149,6 +142,50 @@ public class HydroChartView extends View {
         c.drawCircle(graphRight, lastY, dp(5), paint);
         String stamp = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(last.timeMillis));
         text(c, stamp, graphRight - dp(30), graphBottom + dp(17), 9, Color.rgb(102, 112, 133), false);
+    }
+
+    private void drawAlertBands(Canvas c, float left, float right, float top, float bottom) {
+        float y45 = alertY(4.5, top, bottom);
+        float y55 = alertY(5.5, top, bottom);
+        float y65 = alertY(6.5, top, bottom);
+        paint.setColor(Color.argb(34, 31, 164, 103)); c.drawRect(left, y45, right, bottom, paint);
+        paint.setColor(Color.argb(34, 248, 199, 33)); c.drawRect(left, y55, right, y45, paint);
+        paint.setColor(Color.argb(34, 239, 133, 45)); c.drawRect(left, y65, right, y55, paint);
+        paint.setColor(Color.argb(34, 220, 76, 70)); c.drawRect(left, top, right, y65, paint);
+        stroke.setColor(Color.argb(125, 150, 110, 70));
+        stroke.setStrokeWidth(dp(1));
+        c.drawLine(left, y45, right, y45, stroke);
+        c.drawLine(left, y55, right, y55, stroke);
+        c.drawLine(left, y65, right, y65, stroke);
+        text(c, "4,50", right - dp(82), y45 - dp(3), 8, Color.rgb(102, 112, 133), false);
+        text(c, "5,50", right - dp(56), y55 - dp(3), 8, Color.rgb(102, 112, 133), false);
+        text(c, "6,50", right - dp(30), y65 - dp(3), 8, Color.rgb(102, 112, 133), false);
+    }
+
+    private float alertY(double level, float top, float bottom) {
+        return bottom - (float) (level / 8.0) * (bottom - top);
+    }
+
+    private String alertForLevel(Double level) {
+        if (level == null) return "Aguardando";
+        if (level < 4.5) return "Normal";
+        if (level < 5.5) return "Atenção";
+        if (level < 6.5) return "Alerta";
+        return "Emergência";
+    }
+
+    private int alertColor(Double level) {
+        if (level == null || level < 4.5) return Color.rgb(20, 124, 77);
+        if (level < 5.5) return Color.rgb(133, 100, 0);
+        if (level < 6.5) return Color.rgb(184, 87, 13);
+        return Color.rgb(177, 32, 32);
+    }
+
+    private int panelColor(Double level) {
+        if (level == null || level < 4.5) return Color.rgb(246, 253, 249);
+        if (level < 5.5) return Color.rgb(255, 253, 237);
+        if (level < 6.5) return Color.rgb(255, 247, 238);
+        return Color.rgb(255, 241, 241);
     }
 
     private void drawDamCard(Canvas c, float left, float top, float width, float height, DamReading dam, String fallbackName) {

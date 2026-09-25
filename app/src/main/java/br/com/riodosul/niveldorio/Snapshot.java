@@ -8,4 +8,5 @@ public class Snapshot {
     public DamReading ituporanga;
     public long fetchedAt;
     public boolean fromCache;
+    public String errorMessage;
 }

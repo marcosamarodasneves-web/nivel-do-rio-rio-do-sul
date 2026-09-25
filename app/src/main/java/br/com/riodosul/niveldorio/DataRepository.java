@@ -2,142 +2,377 @@ package br.com.riodosul.niveldorio;
 
 import android.content.Context;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+import org.json.JSONTokener;
+
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Iterator;
 import java.util.Locale;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.TimeZone;
 
 public final class DataRepository {
-    public static final String PORTAL_URL = "https://defesacivil.riodosul.sc.gov.br/index.php?r=externo%2Fclimatempo";
-    private static final String[] PORTAL_URLS = new String[] {
-            PORTAL_URL,
-            "https://defesacivil.riodosul.sc.gov.br/"
-    };
+    private static final String CITY_ID = "4214805";
+    private static final String API_BASE = "https://public.asthon.com.br";
+
+    private static final String PANEL_URL =
+            API_BASE + "/public/panel?city_id=" + CITY_ID + "&include_geometry=false";
+    private static final String LIVE_URL =
+            API_BASE + "/public/stations/live?city_id=" + CITY_ID + "&_v=2";
+    private static final String DAMS_URL =
+            API_BASE + "/public/dams?city_id=" + CITY_ID;
 
     private DataRepository() {}
 
     public static Snapshot fetch(Context context) throws Exception {
-        Exception lastError = null;
+        Snapshot s = new Snapshot();
 
-        for (String url : PORTAL_URLS) {
+        // Fonte principal: painel JSON usado pelo portal atual.
+        Object panelRoot = loadJson(PANEL_URL + "&_t=" + System.currentTimeMillis());
+        fillRiversFromJson(panelRoot, s);
+
+        // Fallback: endpoint "live", já observado retornando level_m por station_id.
+        if (s.rivers.size() < Bridge.values().length) {
             try {
-                String html = httpGet(url);
-                String text = htmlToText(html);
-                Snapshot s = parse(text);
-                if (s.rivers.isEmpty()) {
-                    throw new IllegalStateException("Nenhuma leitura de rio encontrada na resposta do portal.");
-                }
-                s.fetchedAt = System.currentTimeMillis();
-                s.fromCache = false;
-                for (RiverReading r : s.rivers.values()) {
-                    HistoryStore.add(context, r.bridge, r.levelMeters);
-                }
-                AppCache.save(context, s);
-                return s;
-            } catch (Exception e) {
-                lastError = e;
+                Object liveRoot = loadJson(LIVE_URL + "&_t=" + System.currentTimeMillis());
+                fillRiversFromJson(liveRoot, s);
+            } catch (Exception ignored) {
+                // Mantemos os dados já obtidos do painel.
             }
         }
 
-        if (lastError != null) throw lastError;
-        throw new IllegalStateException("Não foi possível consultar o portal.");
+        if (s.rivers.isEmpty()) {
+            throw new IllegalStateException("API respondeu, mas nenhuma estação conhecida foi encontrada.");
+        }
+
+        // Barragens em endpoint JSON separado.
+        try {
+            Object damsRoot = loadJson(DAMS_URL + "&_t=" + System.currentTimeMillis());
+            s.taio = parseDam(findObjectByName(damsRoot,
+                    "Barragem Oeste Taió", "Barragem Oeste", "Taió"),
+                    "Taió", 7);
+            s.ituporanga = parseDam(findObjectByName(damsRoot,
+                    "Barragem Sul Ituporanga", "Barragem Sul", "Ituporanga"),
+                    "Ituporanga", 5);
+        } catch (Exception ignored) {
+            // Não descartamos nível dos rios caso apenas a consulta de barragens falhe.
+        }
+
+        s.fetchedAt = System.currentTimeMillis();
+        s.fromCache = false;
+        s.errorMessage = null;
+
+        for (RiverReading r : s.rivers.values()) {
+            HistoryStore.add(context, r.bridge, r.levelMeters);
+        }
+
+        AppCache.save(context, s);
+        return s;
     }
 
     public static Snapshot fetchOrCache(Context context) {
         try {
             return fetch(context);
         } catch (Exception e) {
+            String error = friendlyError(e);
             Snapshot cached = AppCache.load(context);
-            if (cached != null) return cached;
-            return new Snapshot();
+            if (cached != null) {
+                cached.fromCache = true;
+                cached.errorMessage = error;
+                return cached;
+            }
+
+            Snapshot empty = new Snapshot();
+            empty.errorMessage = error;
+            return empty;
         }
     }
 
-    static Snapshot parse(String text) {
-        Snapshot s = new Snapshot();
+    private static void fillRiversFromJson(Object root, Snapshot s) {
         for (Bridge b : Bridge.values()) {
-            String section = section(text, b.portalMarker, nextRiverMarker(b));
-            RiverReading rr = parseRiver(b, section);
-            if (rr != null) s.rivers.put(b, rr);
+            if (s.rivers.containsKey(b)) continue;
+
+            JSONObject station = findObjectById(root, b.stationId);
+            if (station == null) continue;
+
+            Double level = firstDouble(station,
+                    "level_m", "level", "water_level_m", "river_level_m");
+            if (level == null || level <= 0) continue;
+
+            String readingAt = firstString(station,
+                    "last_reading_at", "reading_at", "last_reading",
+                    "updated_at", "timestamp", "datetime");
+
+            String status = firstString(station, "status", "alert_status", "level_status");
+            if (status == null || status.trim().isEmpty()) {
+                status = statusFromLevel(level);
+            }
+
+            s.rivers.put(b, new RiverReading(
+                    b,
+                    level,
+                    normalizeStatus(status),
+                    formatReadingTime(readingAt)
+            ));
+        }
+    }
+
+    private static DamReading parseDam(JSONObject dam, String name, int defaultTotalGates) {
+        if (dam == null) return null;
+
+        Double level = firstDouble(dam,
+                "level_m", "level", "water_level_m", "upstream_level_m",
+                "upstream_level", "montante_m", "montante");
+
+        Double pct = firstDouble(dam,
+                "capacity_percent", "capacity_percentage", "percentage",
+                "percent", "usage_percent", "utilization_percent",
+                "occupancy_percent");
+
+        Integer open = firstInt(dam,
+                "gates_open", "open_gates", "open_count",
+                "opened_gates", "gates_open_count");
+
+        Integer total = firstInt(dam,
+                "gates_total", "total_gates", "gate_count", "gates_count");
+
+        int[] gateCounts = countGatesFromArray(dam);
+        if (open == null && gateCounts[0] >= 0) open = gateCounts[0];
+        if (total == null && gateCounts[1] > 0) total = gateCounts[1];
+
+        if (total == null || total <= 0) total = defaultTotalGates;
+        if (open == null || open < 0) open = 0;
+
+        String readingAt = firstString(dam,
+                "last_reading_at", "reading_at", "updated_at",
+                "timestamp", "datetime");
+
+        // Se o endpoint mudar algum nome de campo, preferimos ainda retornar
+        // uma barragem parcial em vez de descartar tudo.
+        double safeLevel = level == null ? 0.0 : level;
+        double safePct = pct == null ? 0.0 : pct;
+
+        return new DamReading(
+                name,
+                safeLevel,
+                safePct,
+                Math.min(open, total),
+                total,
+                formatReadingTime(readingAt)
+        );
+    }
+
+    private static int[] countGatesFromArray(JSONObject dam) {
+        String[] keys = { "gates", "sluice_gates", "floodgates", "comportas" };
+        for (String key : keys) {
+            JSONArray arr = dam.optJSONArray(key);
+            if (arr == null) continue;
+
+            int open = 0;
+            for (int i = 0; i < arr.length(); i++) {
+                Object item = arr.opt(i);
+                if (item instanceof JSONObject) {
+                    JSONObject g = (JSONObject) item;
+                    if (isGateOpen(g)) open++;
+                } else if (item instanceof Boolean && (Boolean) item) {
+                    open++;
+                }
+            }
+            return new int[] { open, arr.length() };
+        }
+        return new int[] { -1, -1 };
+    }
+
+    private static boolean isGateOpen(JSONObject g) {
+        if (g.has("open")) return g.optBoolean("open", false);
+        if (g.has("is_open")) return g.optBoolean("is_open", false);
+        if (g.has("opened")) return g.optBoolean("opened", false);
+
+        String status = firstString(g, "status", "state", "situation");
+        if (status == null) return false;
+
+        String x = status.toLowerCase(Locale.ROOT);
+        return x.contains("open") || x.contains("abert");
+    }
+
+    private static Object loadJson(String url) throws Exception {
+        String body = httpGet(url);
+        Object root = new JSONTokener(body).nextValue();
+        if (!(root instanceof JSONObject) && !(root instanceof JSONArray)) {
+            throw new IllegalStateException("Resposta da API não é JSON.");
+        }
+        return root;
+    }
+
+    private static JSONObject findObjectById(Object node, String wantedId) {
+        if (node instanceof JSONObject) {
+            JSONObject o = (JSONObject) node;
+
+            String[] idKeys = { "station_id", "id", "uuid", "stationId" };
+            for (String key : idKeys) {
+                String value = o.optString(key, "");
+                if (wantedId.equalsIgnoreCase(value)) return o;
+            }
+
+            Iterator<String> keys = o.keys();
+            while (keys.hasNext()) {
+                String key = keys.next();
+                Object child = o.opt(key);
+                JSONObject found = findObjectById(child, wantedId);
+                if (found != null) return found;
+            }
+        } else if (node instanceof JSONArray) {
+            JSONArray a = (JSONArray) node;
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject found = findObjectById(a.opt(i), wantedId);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private static JSONObject findObjectByName(Object node, String... wantedNames) {
+        if (node instanceof JSONObject) {
+            JSONObject o = (JSONObject) node;
+            String[] nameKeys = { "name", "station_name", "dam_name", "title", "description" };
+
+            for (String key : nameKeys) {
+                String value = normalize(o.optString(key, ""));
+                if (value.isEmpty()) continue;
+
+                for (String wanted : wantedNames) {
+                    String target = normalize(wanted);
+                    if (value.equals(target) || value.contains(target) || target.contains(value)) {
+                        return o;
+                    }
+                }
+            }
+
+            Iterator<String> keys = o.keys();
+            while (keys.hasNext()) {
+                Object child = o.opt(keys.next());
+                JSONObject found = findObjectByName(child, wantedNames);
+                if (found != null) return found;
+            }
+        } else if (node instanceof JSONArray) {
+            JSONArray a = (JSONArray) node;
+            for (int i = 0; i < a.length(); i++) {
+                JSONObject found = findObjectByName(a.opt(i), wantedNames);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
+    private static Double firstDouble(JSONObject o, String... keys) {
+        for (String key : keys) {
+            if (!o.has(key) || o.isNull(key)) continue;
+
+            Object v = o.opt(key);
+            Double parsed = toDouble(v);
+            if (parsed != null) return parsed;
         }
 
-        String taioSection = section(text, "Barragem Oeste", "Barragem Sul");
-        s.taio = parseDam("Taió", taioSection, 7);
-
-        String itupSection = section(text, "Barragem Sul", "Defesa Civil de Rio do Sul");
-        s.ituporanga = parseDam("Ituporanga", itupSection, 5);
-        return s;
+        // Alguns serviços agrupam a leitura atual dentro de um objeto.
+        String[] containers = { "latest", "reading", "current", "data", "measurements" };
+        for (String container : containers) {
+            JSONObject child = o.optJSONObject(container);
+            if (child == null) continue;
+            Double value = firstDoubleDirect(child, keys);
+            if (value != null) return value;
+        }
+        return null;
     }
 
-    private static String nextRiverMarker(Bridge b) {
-        switch (b) {
-            case DOM_TITO: return "Ponte Ricardo Kanitz";
-            case RICARDO_KANITZ: return "Ponte BR 470";
-            default: return "Câmera ao Vivo";
+    private static Double firstDoubleDirect(JSONObject o, String... keys) {
+        for (String key : keys) {
+            if (!o.has(key) || o.isNull(key)) continue;
+            Double value = toDouble(o.opt(key));
+            if (value != null) return value;
+        }
+        return null;
+    }
+
+    private static Integer firstInt(JSONObject o, String... keys) {
+        Double d = firstDouble(o, keys);
+        return d == null ? null : (int) Math.round(d);
+    }
+
+    private static Double toDouble(Object value) {
+        if (value == null || value == JSONObject.NULL) return null;
+        if (value instanceof Number) return ((Number) value).doubleValue();
+
+        try {
+            String s = String.valueOf(value).trim();
+            if (s.isEmpty()) return null;
+            s = s.replace("%", "").replace(" m", "").trim();
+            if (s.contains(",")) s = s.replace(".", "").replace(',', '.');
+            return Double.parseDouble(s);
+        } catch (Exception ignored) {
+            return null;
         }
     }
 
-    private static RiverReading parseRiver(Bridge b, String section) {
-        if (section == null || section.isEmpty()) return null;
-
-        Matcher lm = Pattern.compile("([0-9]{1,2}[,.][0-9]{1,2})\\s*m\\s*Nível\\s+do\\s+rio", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(section);
-        if (!lm.find()) {
-            lm = Pattern.compile("([0-9]{1,2}[,.][0-9]{1,2})\\s*m", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(section);
-            if (!lm.find()) return null;
+    private static String firstString(JSONObject o, String... keys) {
+        for (String key : keys) {
+            if (!o.has(key) || o.isNull(key)) continue;
+            String s = o.optString(key, "").trim();
+            if (!s.isEmpty()) return s;
         }
 
-        double level = number(lm.group(1));
-        String status = firstGroup(section, "\\b(Normal|Atenção|Alerta!|Alerta|Emergência)\\b");
-        if (status == null) status = statusFromLevel(level);
-
-        String time = firstGroup(section, "Leitura:\\s*([^\\n]{5,50})");
-        if (time == null) time = "horário não informado";
-        return new RiverReading(b, level, status, time.trim());
+        String[] containers = { "latest", "reading", "current", "data", "measurements" };
+        for (String container : containers) {
+            JSONObject child = o.optJSONObject(container);
+            if (child == null) continue;
+            for (String key : keys) {
+                String s = child.optString(key, "").trim();
+                if (!s.isEmpty()) return s;
+            }
+        }
+        return null;
     }
 
-    private static DamReading parseDam(String name, String section, int gatesTotal) {
-        if (section == null || section.isEmpty()) return null;
+    private static String formatReadingTime(String raw) {
+        if (raw == null || raw.trim().isEmpty()) return "horário não informado";
+        String s = raw.trim();
 
-        Matcher lm = Pattern.compile(
-                "([0-9]{1,2}[,.][0-9]{1,2})\\s*m\\s*([0-9]{1,3}(?:[,.][0-9]{1,2})?)%\\s*da\\s+capacidade",
-                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(section);
-        if (!lm.find()) return null;
+        String[] utcPatterns = {
+                "yyyy-MM-dd'T'HH:mm:ss.SSSX",
+                "yyyy-MM-dd'T'HH:mm:ssX",
+                "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+                "yyyy-MM-dd'T'HH:mm:ss'Z'"
+        };
 
-        double level = number(lm.group(1));
-        double pct = number(lm.group(2));
-        int open = 0;
-        Matcher gm = Pattern.compile("(\\d+)\\s*de\\s*" + gatesTotal + "\\s*abertas", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(section);
-        if (gm.find()) open = Integer.parseInt(gm.group(1));
+        for (String p : utcPatterns) {
+            try {
+                SimpleDateFormat parser = new SimpleDateFormat(p, Locale.US);
+                parser.setTimeZone(TimeZone.getTimeZone("UTC"));
+                Date d = parser.parse(s);
+                if (d != null) {
+                    return new SimpleDateFormat("dd/MM HH:mm", new Locale("pt", "BR")).format(d);
+                }
+            } catch (Exception ignored) {}
+        }
 
-        String age = firstGroup(section, "Leitura\\s+([^\\n]{3,50})");
-        return new DamReading(name, level, pct, open, gatesTotal, age == null ? "" : age.trim());
+        // Caso a API já envie uma descrição ou horário local legível.
+        return s.length() > 40 ? s.substring(0, 40) : s;
     }
 
-    private static String section(String text, String start, String end) {
-        int a = indexOfIgnoreCase(text, start, 0);
-        if (a < 0) return "";
-        int b = end == null ? -1 : indexOfIgnoreCase(text, end, a + start.length());
-        if (b < 0) b = Math.min(text.length(), a + 5000);
-        return text.substring(a, b);
-    }
+    private static String normalizeStatus(String status) {
+        String s = status == null ? "" : status.trim();
+        String low = s.toLowerCase(Locale.ROOT);
 
-    private static int indexOfIgnoreCase(String s, String find, int from) {
-        return s.toLowerCase(Locale.ROOT).indexOf(find.toLowerCase(Locale.ROOT), from);
-    }
-
-    private static String firstGroup(String s, String regex) {
-        Matcher m = Pattern.compile(regex, Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(s);
-        return m.find() ? m.group(1) : null;
-    }
-
-    private static double number(String s) {
-        String n = s.trim();
-        if (n.contains(",")) n = n.replace(".", "").replace(',', '.');
-        return Double.parseDouble(n);
+        if (low.contains("normal")) return "Normal";
+        if (low.contains("aten")) return "Atenção";
+        if (low.contains("alert")) return "Alerta";
+        if (low.contains("emerg")) return "Emergência";
+        return s.isEmpty() ? "Normal" : s;
     }
 
     private static String statusFromLevel(double level) {
@@ -152,10 +387,14 @@ public final class DataRepository {
         c.setConnectTimeout(12000);
         c.setReadTimeout(15000);
         c.setInstanceFollowRedirects(true);
+        c.setUseCaches(false);
         c.setRequestMethod("GET");
-        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/153.0 Mobile Safari/537.36");
-        c.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        c.setRequestProperty("User-Agent",
+                "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/153.0 Mobile Safari/537.36");
+        c.setRequestProperty("Accept", "application/json,text/plain,*/*");
         c.setRequestProperty("Accept-Language", "pt-BR,pt;q=0.9,en;q=0.6");
+        c.setRequestProperty("Cache-Control", "no-cache");
+        c.setRequestProperty("Pragma", "no-cache");
         c.setRequestProperty("Connection", "close");
 
         int code = c.getResponseCode();
@@ -164,30 +403,49 @@ public final class DataRepository {
             throw new IllegalStateException("HTTP " + code);
         }
 
-        BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8));
+        BufferedReader br = new BufferedReader(
+                new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8));
         StringBuilder sb = new StringBuilder();
         char[] buf = new char[8192];
         int n;
-        while ((n = br.read(buf)) >= 0) sb.append(buf, 0, n);
+        while ((n = br.read(buf)) >= 0) {
+            sb.append(buf, 0, n);
+        }
         br.close();
         c.disconnect();
-        return sb.toString();
+
+        String body = sb.toString().trim();
+        if (body.isEmpty()) throw new IllegalStateException("Resposta vazia da API.");
+        return body;
     }
 
-    static String htmlToText(String html) {
-        String x = html;
-        x = x.replaceAll("(?is)<script[^>]*>.*?</script>", " ");
-        x = x.replaceAll("(?is)<style[^>]*>.*?</style>", " ");
-        x = x.replaceAll("(?i)<br\\s*/?>", "\\n");
-        x = x.replaceAll("(?i)</(div|p|section|article|h1|h2|h3|h4|li|tr)>", "\\n");
-        x = x.replaceAll("(?s)<[^>]+>", " ");
-        x = x.replace("&nbsp;", " ").replace("&amp;", "&").replace("&quot;", "\"")
-                .replace("&#039;", "'").replace("&aacute;", "á").replace("&atilde;", "ã")
-                .replace("&ccedil;", "ç").replace("&eacute;", "é").replace("&iacute;", "í")
-                .replace("&oacute;", "ó").replace("&uacute;", "ú");
-        x = x.replaceAll("[\\t\\x0B\\f\\r ]+", " ");
-        x = x.replaceAll(" *\\n *", "\\n");
-        x = x.replaceAll("\\n{2,}", "\\n");
-        return x.trim();
+    private static String friendlyError(Exception e) {
+        String type = e.getClass().getSimpleName();
+        String msg = e.getMessage();
+        if (msg == null || msg.trim().isEmpty()) return type;
+
+        msg = msg.replace('\n', ' ').replace('\r', ' ').trim();
+        if (msg.length() > 90) msg = msg.substring(0, 90);
+        return type + ": " + msg;
+    }
+
+    private static String normalize(String s) {
+        if (s == null) return "";
+        return s.toLowerCase(Locale.ROOT)
+                .replace("á", "a")
+                .replace("à", "a")
+                .replace("â", "a")
+                .replace("ã", "a")
+                .replace("é", "e")
+                .replace("ê", "e")
+                .replace("í", "i")
+                .replace("ó", "o")
+                .replace("ô", "o")
+                .replace("õ", "o")
+                .replace("ú", "u")
+                .replace("ç", "c")
+                .replace("-", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 }

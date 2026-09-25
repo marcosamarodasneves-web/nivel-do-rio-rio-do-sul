@@ -55,11 +55,19 @@ public class MainActivity extends Activity {
         Button refresh = findViewById(R.id.refresh_button);
 
         String[] labels = new String[Bridge.values().length];
-        for (int i = 0; i < labels.length; i++) labels[i] = "📍 " + Bridge.values()[i].label();
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_dropdown_item, labels);
+        for (int i = 0; i < labels.length; i++) {
+            labels[i] = "📍 " + Bridge.values()[i].label();
+        }
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this,
+                android.R.layout.simple_spinner_dropdown_item,
+                labels
+        );
         spinner.setAdapter(adapter);
         spinner.setSelection(AppPrefs.getSelectedBridge(this).ordinal());
         spinnerReady = true;
+
         spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
             @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 if (!spinnerReady) return;
@@ -68,6 +76,7 @@ public class MainActivity extends Activity {
                 render(AppCache.load(MainActivity.this));
                 refreshWidgets();
             }
+
             @Override public void onNothingSelected(AdapterView<?> parent) {}
         });
 
@@ -83,10 +92,12 @@ public class MainActivity extends Activity {
     private void applyStatusBarInset() {
         View root = findViewById(R.id.main_root);
         if (root == null) return;
+
         final int left = root.getPaddingLeft();
         final int top = root.getPaddingTop();
         final int right = root.getPaddingRight();
         final int bottom = root.getPaddingBottom();
+
         root.setOnApplyWindowInsetsListener((v, insets) -> {
             int statusBar = insets.getSystemWindowInsetTop();
             v.setPadding(left, top + statusBar, right, bottom);
@@ -104,9 +115,11 @@ public class MainActivity extends Activity {
         if (refreshing) return;
         refreshing = true;
         updated.setText("Atualizando dados…");
+
         executor.execute(() -> {
             Snapshot s = DataRepository.fetchOrCache(MainActivity.this);
             int count = DailyCounter.update(MainActivity.this);
+
             runOnUiThread(() -> {
                 refreshing = false;
                 render(s);
@@ -134,37 +147,70 @@ public class MainActivity extends Activity {
             status.setText(r.status);
             trend.setText(HistoryStore.trend(this, b, r.levelMeters));
         }
+
         chart.setSamples(HistoryStore.read(this, b));
 
         StringBuilder ds = new StringBuilder();
         if (s != null && s.taio != null) {
-            ds.append(String.format(new Locale("pt", "BR"), "Taió  %.1f%%  •  %.2f m  •  %d/%d comportas abertas",
-                    s.taio.capacityPercent, s.taio.levelMeters, s.taio.gatesOpen, s.taio.gatesTotal));
+            ds.append(String.format(
+                    new Locale("pt", "BR"),
+                    "Taió  %.1f%%  •  %.2f m  •  %d/%d comportas abertas",
+                    s.taio.capacityPercent,
+                    s.taio.levelMeters,
+                    s.taio.gatesOpen,
+                    s.taio.gatesTotal
+            ));
         } else {
             ds.append("Taió  --");
         }
+
         ds.append("\n");
+
         if (s != null && s.ituporanga != null) {
-            ds.append(String.format(new Locale("pt", "BR"), "Ituporanga  %.1f%%  •  %.2f m  •  %d/%d comportas abertas",
-                    s.ituporanga.capacityPercent, s.ituporanga.levelMeters, s.ituporanga.gatesOpen, s.ituporanga.gatesTotal));
+            ds.append(String.format(
+                    new Locale("pt", "BR"),
+                    "Ituporanga  %.1f%%  •  %.2f m  •  %d/%d comportas abertas",
+                    s.ituporanga.capacityPercent,
+                    s.ituporanga.levelMeters,
+                    s.ituporanga.gatesOpen,
+                    s.ituporanga.gatesTotal
+            ));
         } else {
             ds.append("Ituporanga  --");
         }
         dams.setText(ds.toString());
 
         if (s != null && s.fetchedAt > 0) {
-            String stamp = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(s.fetchedAt));
+            String stamp = new SimpleDateFormat(
+                    "HH:mm",
+                    Locale.getDefault()
+            ).format(new Date(s.fetchedAt));
+
             String station = r == null ? "" : "\nLeitura da estação: " + r.readingTime;
-            updated.setText((s.fromCache ? "⚠ Último dado salvo • " : "Atualizado às ") + stamp + station);
+            String base = (s.fromCache ? "⚠ Último dado salvo • " : "Atualizado às ") + stamp + station;
+
+            if (s.errorMessage != null && !s.errorMessage.trim().isEmpty()) {
+                base += "\nFalha na API: " + s.errorMessage;
+            }
+            updated.setText(base);
         } else {
-            updated.setText("Dados indisponíveis • nova tentativa automática em até 5 min");
+            String msg = "Dados indisponíveis";
+            if (s != null && s.errorMessage != null && !s.errorMessage.trim().isEmpty()) {
+                msg += "\nFalha na API: " + s.errorMessage;
+            }
+            msg += "\nNova tentativa automática em até 5 min";
+            updated.setText(msg);
         }
     }
 
     private void refreshWidgets() {
         AppWidgetManager mgr = AppWidgetManager.getInstance(this);
-        int[] ids = mgr.getAppWidgetIds(new ComponentName(this, RiverWidgetProvider.class));
-        for (int id : ids) RiverWidgetProvider.updateAsync(this, mgr, id);
+        int[] ids = mgr.getAppWidgetIds(
+                new ComponentName(this, RiverWidgetProvider.class)
+        );
+        for (int id : ids) {
+            RiverWidgetProvider.updateAsync(this, mgr, id);
+        }
     }
 
     @Override protected void onResume() {

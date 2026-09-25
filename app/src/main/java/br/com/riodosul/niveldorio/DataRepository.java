@@ -12,25 +12,45 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public final class DataRepository {
-    public static final String PORTAL_URL = "https://defesacivil.riodosul.sc.gov.br/";
+    public static final String PORTAL_URL = "https://defesacivil.riodosul.sc.gov.br/index.php?r=externo%2Fclimatempo";
+    private static final String[] PORTAL_URLS = new String[] {
+            PORTAL_URL,
+            "https://defesacivil.riodosul.sc.gov.br/"
+    };
 
     private DataRepository() {}
 
     public static Snapshot fetch(Context context) throws Exception {
-        String html = httpGet(PORTAL_URL);
-        String text = htmlToText(html);
-        Snapshot s = parse(text);
-        s.fetchedAt = System.currentTimeMillis();
-        s.fromCache = false;
-        if (s.rivers.isEmpty()) throw new IllegalStateException("Nenhuma leitura de rio encontrada no portal.");
-        for (RiverReading r : s.rivers.values()) HistoryStore.add(context, r.bridge, r.levelMeters);
-        AppCache.save(context, s);
-        return s;
+        Exception lastError = null;
+
+        for (String url : PORTAL_URLS) {
+            try {
+                String html = httpGet(url);
+                String text = htmlToText(html);
+                Snapshot s = parse(text);
+                if (s.rivers.isEmpty()) {
+                    throw new IllegalStateException("Nenhuma leitura de rio encontrada na resposta do portal.");
+                }
+                s.fetchedAt = System.currentTimeMillis();
+                s.fromCache = false;
+                for (RiverReading r : s.rivers.values()) {
+                    HistoryStore.add(context, r.bridge, r.levelMeters);
+                }
+                AppCache.save(context, s);
+                return s;
+            } catch (Exception e) {
+                lastError = e;
+            }
+        }
+
+        if (lastError != null) throw lastError;
+        throw new IllegalStateException("Não foi possível consultar o portal.");
     }
 
     public static Snapshot fetchOrCache(Context context) {
-        try { return fetch(context); }
-        catch (Exception e) {
+        try {
+            return fetch(context);
+        } catch (Exception e) {
             Snapshot cached = AppCache.load(context);
             if (cached != null) return cached;
             return new Snapshot();
@@ -44,10 +64,12 @@ public final class DataRepository {
             RiverReading rr = parseRiver(b, section);
             if (rr != null) s.rivers.put(b, rr);
         }
-        String dams = section(text, "Barragem Oeste", "Defesa Civil de Rio do Sul");
-        s.taio = parseDam("Taió", dams, "Barragem Oeste", 7);
+
+        String taioSection = section(text, "Barragem Oeste", "Barragem Sul");
+        s.taio = parseDam("Taió", taioSection, 7);
+
         String itupSection = section(text, "Barragem Sul", "Defesa Civil de Rio do Sul");
-        s.ituporanga = parseDam("Ituporanga", itupSection, "Barragem Sul", 5);
+        s.ituporanga = parseDam("Ituporanga", itupSection, 5);
         return s;
     }
 
@@ -61,29 +83,37 @@ public final class DataRepository {
 
     private static RiverReading parseRiver(Bridge b, String section) {
         if (section == null || section.isEmpty()) return null;
-        Matcher lm = Pattern.compile("([0-9]{1,2}[,.][0-9]{1,2})\\s*m\\s*Nível do rio", Pattern.CASE_INSENSITIVE).matcher(section);
+
+        Matcher lm = Pattern.compile("([0-9]{1,2}[,.][0-9]{1,2})\\s*m\\s*Nível\\s+do\\s+rio", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(section);
         if (!lm.find()) {
-            lm = Pattern.compile("([0-9]{1,2}[,.][0-9]{1,2})\\s*m", Pattern.CASE_INSENSITIVE).matcher(section);
+            lm = Pattern.compile("([0-9]{1,2}[,.][0-9]{1,2})\\s*m", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(section);
             if (!lm.find()) return null;
         }
+
         double level = number(lm.group(1));
         String status = firstGroup(section, "\\b(Normal|Atenção|Alerta!|Alerta|Emergência)\\b");
         if (status == null) status = statusFromLevel(level);
-        String time = firstGroup(section, "Leitura:\\s*([^\\n]{5,40})");
+
+        String time = firstGroup(section, "Leitura:\\s*([^\\n]{5,50})");
         if (time == null) time = "horário não informado";
         return new RiverReading(b, level, status, time.trim());
     }
 
-    private static DamReading parseDam(String name, String section, String marker, int gatesTotal) {
+    private static DamReading parseDam(String name, String section, int gatesTotal) {
         if (section == null || section.isEmpty()) return null;
-        Matcher lm = Pattern.compile("([0-9]{1,2}[,.][0-9]{1,2})\\s*m\\s*([0-9]{1,3}(?:[,.][0-9]{1,2})?)%\\s*da capacidade", Pattern.CASE_INSENSITIVE).matcher(section);
+
+        Matcher lm = Pattern.compile(
+                "([0-9]{1,2}[,.][0-9]{1,2})\\s*m\\s*([0-9]{1,3}(?:[,.][0-9]{1,2})?)%\\s*da\\s+capacidade",
+                Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(section);
         if (!lm.find()) return null;
+
         double level = number(lm.group(1));
         double pct = number(lm.group(2));
         int open = 0;
-        Matcher gm = Pattern.compile("(\\d+)\\s*de\\s*" + gatesTotal + "\\s*abertas", Pattern.CASE_INSENSITIVE).matcher(section);
+        Matcher gm = Pattern.compile("(\\d+)\\s*de\\s*" + gatesTotal + "\\s*abertas", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(section);
         if (gm.find()) open = Integer.parseInt(gm.group(1));
-        String age = firstGroup(section, "Leitura\\s+([^\\n]{3,40})");
+
+        String age = firstGroup(section, "Leitura\\s+([^\\n]{3,50})");
         return new DamReading(name, level, pct, open, gatesTotal, age == null ? "" : age.trim());
     }
 
@@ -91,7 +121,7 @@ public final class DataRepository {
         int a = indexOfIgnoreCase(text, start, 0);
         if (a < 0) return "";
         int b = end == null ? -1 : indexOfIgnoreCase(text, end, a + start.length());
-        if (b < 0) b = Math.min(text.length(), a + 3000);
+        if (b < 0) b = Math.min(text.length(), a + 5000);
         return text.substring(a, b);
     }
 
@@ -122,10 +152,18 @@ public final class DataRepository {
         c.setConnectTimeout(12000);
         c.setReadTimeout(15000);
         c.setInstanceFollowRedirects(true);
-        c.setRequestProperty("User-Agent", "NivelDoRioAndroid/0.1 (+Rio do Sul; uso informativo)");
-        c.setRequestProperty("Accept", "text/html,application/xhtml+xml");
+        c.setRequestMethod("GET");
+        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 Chrome/153.0 Mobile Safari/537.36");
+        c.setRequestProperty("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8");
+        c.setRequestProperty("Accept-Language", "pt-BR,pt;q=0.9,en;q=0.6");
+        c.setRequestProperty("Connection", "close");
+
         int code = c.getResponseCode();
-        if (code < 200 || code >= 300) throw new IllegalStateException("HTTP " + code);
+        if (code < 200 || code >= 300) {
+            c.disconnect();
+            throw new IllegalStateException("HTTP " + code);
+        }
+
         BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8));
         StringBuilder sb = new StringBuilder();
         char[] buf = new char[8192];

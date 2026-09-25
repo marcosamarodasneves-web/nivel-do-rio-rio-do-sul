@@ -99,11 +99,15 @@ public class RiverWidgetProvider extends AppWidgetProvider {
 
         if (s != null && s.fetchedAt > 0) {
             String stamp = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date(s.fetchedAt));
-            rv.setTextViewText(R.id.widget_updated, (s.fromCache ? "⚠ Último dado " : "Atualizado ") + stamp);
-        } else rv.setTextViewText(R.id.widget_updated, "Dados indisponíveis");
+            rv.setTextViewText(R.id.widget_updated, (s.fromCache ? "⚠ Último dado " : "Atualizado ") + stamp + " • auto até 30 min");
+        } else rv.setTextViewText(R.id.widget_updated, "Dados indisponíveis • auto até 30 min");
 
-        if (count >= 0) rv.setTextViewText(R.id.widget_visits, "👥 " + NumberFormat.getIntegerInstance(new Locale("pt", "BR")).format(count) + " acessos hoje");
-        else rv.setTextViewText(R.id.widget_visits, "👥 contador indisponível");
+        if (count >= 0) {
+            String n = NumberFormat.getIntegerInstance(new Locale("pt", "BR")).format(count);
+            rv.setTextViewText(R.id.widget_visits, "👥 " + n + (count == 1 ? " acesso hoje" : " acessos hoje"));
+        } else {
+            rv.setTextViewText(R.id.widget_visits, "👥 contador indisponível");
+        }
         m.updateAppWidget(id, rv);
     }
 }

@@ -83,15 +83,6 @@ public class RiverStatusCardView extends View {
         text(c, "6,50", barLeft + (barRight - barLeft) * 6.5f / 8f - dp(11), dp(137), 8, Color.rgb(102, 112, 133), false);
         text(c, "8,00 m", barRight - dp(26), dp(137), 8, Color.rgb(102, 112, 133), false);
 
-        paint.setStyle(Paint.Style.FILL);
-        paint.setColor(Color.rgb(248, 251, 252));
-        c.drawRoundRect(new RectF(left, dp(151), left + dp(192), dp(177)), dp(13), dp(13), paint);
-        paint.setStyle(Paint.Style.STROKE);
-        paint.setStrokeWidth(dp(1));
-        paint.setColor(Color.rgb(180, 198, 205));
-        c.drawRoundRect(new RectF(left, dp(151), left + dp(192), dp(177)), dp(13), dp(13), paint);
-        text(c, "⌾  Ver referência no mapa  ↗", left + dp(11), dp(168), 10, Color.rgb(35, 73, 95), true);
-
         String time = reading == null ? "Leitura indisponível" : "Leitura: " + reading.readingTime;
         text(c, time, w - dp(185), dp(168), 9, Color.rgb(75, 82, 88), false);
     }

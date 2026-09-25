@@ -155,7 +155,7 @@ public class HydroChartView extends View {
         float barLeft = left + dp(12), barRight = left + width - dp(12), barTop = top + dp(80), barHeight = dp(8);
         paint.setColor(Color.rgb(224, 232, 241));
         c.drawRoundRect(new RectF(barLeft, barTop, barRight, barTop + barHeight), dp(4), dp(4), paint);
-        float pct = Math.max(0, Math.min(100, dam.capacityPercent));
+        float pct = (float) Math.max(0.0, Math.min(100.0, dam.capacityPercent));
         paint.setColor(pct >= 80 ? Color.rgb(220, 76, 70) : Color.rgb(21, 145, 104));
         c.drawRoundRect(new RectF(barLeft, barTop, barLeft + (barRight - barLeft) * pct / 100f, barTop + barHeight), dp(4), dp(4), paint);
 

@@ -7,13 +7,21 @@ public class DamReading {
     public int gatesOpen;
     public int gatesTotal;
     public String age;
+    /** Estado individual das comportas, quando fornecido pela API. */
+    public boolean[] gateStates;
 
     public DamReading(String name, double levelMeters, double capacityPercent, int gatesOpen, int gatesTotal, String age) {
+        this(name, levelMeters, capacityPercent, gatesOpen, gatesTotal, age, null);
+    }
+
+    public DamReading(String name, double levelMeters, double capacityPercent,
+                      int gatesOpen, int gatesTotal, String age, boolean[] gateStates) {
         this.name = name;
         this.levelMeters = levelMeters;
         this.capacityPercent = capacityPercent;
-        this.gatesOpen = gatesOpen;
-        this.gatesTotal = gatesTotal;
+        this.gatesOpen = Math.max(0, gatesOpen);
+        this.gatesTotal = Math.max(0, gatesTotal);
         this.age = age;
+        this.gateStates = gateStates == null ? null : gateStates.clone();
     }
 }

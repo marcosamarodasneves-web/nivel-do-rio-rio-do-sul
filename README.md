@@ -10,7 +10,8 @@ Protótipo nativo Android sem bibliotecas de terceiros em runtime.
   - Ponte BR-470 — Rio Itajaí do Oeste
 - Widget de tela inicial com nível, situação, tendência e gráfico.
 - Botão **Trocar ponte** no widget (cicla pelas três pontes).
-- Barragens de Taió e Ituporanga com capacidade, nível e comportas.
+- Barragens de Taió e Ituporanga com capacidade, nível e estado das comportas.
+- Painel gráfico combinado com histórico do rio, ocupação das barragens e comportas abertas/fechadas.
 - Cache: se a fonte falhar, conserva a última leitura válida e marca como dado salvo.
 - Histórico local de até 24 h por ponte, coletado pelo próprio aparelho.
 - Contador diário de acessos para teste.
@@ -22,7 +23,12 @@ Protótipo nativo Android sem bibliotecas de terceiros em runtime.
 
 ### Importante sobre a fonte
 
-A leitura do portal está isolada em `DataRepository.java`. Nesta primeira versão, enquanto não há um endpoint municipal documentado confirmado para todas as três pontes + barragens, o protótipo extrai os valores da resposta do portal. Se o município disponibilizar endpoint JSON/API, basta substituir essa classe, sem refazer a interface/widget.
+A leitura está isolada em `DataRepository.java` e usa os endpoints JSON públicos atuais do portal:
+
+- `https://public.asthon.com.br/public/panel?city_id=4214805&include_geometry=false`
+- `https://public.asthon.com.br/public/dams?city_id=4214805`
+
+O parser das barragens considera os campos atuais `nivel_m`, `percent_use`, `comportas_abertas`, `comportas_total` e `comportas[].aberta`. Os estados individuais também são preservados no cache para a tela continuar funcionando sem rede.
 
 ### Importante sobre o contador
 

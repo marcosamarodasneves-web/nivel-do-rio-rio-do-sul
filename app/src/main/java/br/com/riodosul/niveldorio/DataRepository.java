@@ -131,18 +131,20 @@ public final class DataRepository {
                 "upstream_level", "montante_m", "montante");
 
         Double pct = firstDouble(dam,
+                "percent_use", "capacidade_atual",
                 "capacity_percent", "capacity_percentage", "percentage",
                 "percent", "usage_percent", "utilization_percent",
                 "occupancy_percent");
 
         Integer open = firstInt(dam,
-                "gates_open", "open_gates", "open_count",
+                "comportas_abertas", "gates_open", "open_gates", "open_count",
                 "opened_gates", "gates_open_count");
 
         Integer total = firstInt(dam,
-                "gates_total", "total_gates", "gate_count", "gates_count");
+                "comportas_total", "gates_total", "total_gates", "gate_count", "gates_count");
 
         int[] gateCounts = countGatesFromArray(dam);
+        boolean[] gateStates = gateStatesFromArray(dam);
         if (open == null && gateCounts[0] >= 0) open = gateCounts[0];
         if (total == null && gateCounts[1] > 0) total = gateCounts[1];
 
@@ -164,7 +166,8 @@ public final class DataRepository {
                 safePct,
                 Math.min(open, total),
                 total,
-                formatReadingTime(readingAt)
+                formatReadingTime(readingAt),
+                gateStates
         );
     }
 
@@ -193,12 +196,32 @@ public final class DataRepository {
         if (g.has("open")) return g.optBoolean("open", false);
         if (g.has("is_open")) return g.optBoolean("is_open", false);
         if (g.has("opened")) return g.optBoolean("opened", false);
+        if (g.has("aberta")) return g.optBoolean("aberta", false);
 
         String status = firstString(g, "status", "state", "situation");
         if (status == null) return false;
 
         String x = status.toLowerCase(Locale.ROOT);
         return x.contains("open") || x.contains("abert");
+    }
+
+    private static boolean[] gateStatesFromArray(JSONObject dam) {
+        String[] keys = { "gates", "sluice_gates", "floodgates", "comportas" };
+        for (String key : keys) {
+            JSONArray arr = dam.optJSONArray(key);
+            if (arr == null) continue;
+            boolean[] states = new boolean[arr.length()];
+            for (int i = 0; i < arr.length(); i++) {
+                Object item = arr.opt(i);
+                if (item instanceof JSONObject) {
+                    states[i] = isGateOpen((JSONObject) item);
+                } else if (item instanceof Boolean) {
+                    states[i] = (Boolean) item;
+                }
+            }
+            return states;
+        }
+        return null;
     }
 
     private static Object loadJson(String url) throws Exception {

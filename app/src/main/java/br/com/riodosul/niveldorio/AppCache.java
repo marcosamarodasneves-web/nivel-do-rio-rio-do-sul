@@ -30,6 +30,11 @@ public final class AppCache {
         e.putInt(p + "open", d.gatesOpen);
         e.putInt(p + "total", d.gatesTotal);
         e.putString(p + "age", d.age == null ? "" : d.age);
+        if (d.gateStates != null) {
+            StringBuilder states = new StringBuilder();
+            for (boolean open : d.gateStates) states.append(open ? '1' : '0');
+            e.putString(p + "states", states.toString());
+        }
     }
 
     public static Snapshot load(Context c) {
@@ -63,7 +68,15 @@ public final class AppCache {
                     Double.parseDouble(p.getString(prefix + "pct", "0")),
                     p.getInt(prefix + "open", 0),
                     p.getInt(prefix + "total", 0),
-                    p.getString(prefix + "age", ""));
+                    p.getString(prefix + "age", ""),
+                    decodeStates(p.getString(prefix + "states", "")));
         } catch (Exception e) { return null; }
+    }
+
+    private static boolean[] decodeStates(String raw) {
+        if (raw == null || raw.isEmpty()) return null;
+        boolean[] result = new boolean[raw.length()];
+        for (int i = 0; i < raw.length(); i++) result[i] = raw.charAt(i) == '1';
+        return result;
     }
 }

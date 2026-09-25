@@ -121,11 +121,11 @@ public class RiverWidgetProvider extends AppWidgetProvider {
         );
 
         String taio = s != null && s.taio != null
-                ? String.format(new Locale("pt", "BR"), "Taió %.1f%%", s.taio.capacityPercent)
+                ? String.format(new Locale("pt", "BR"), "Taió %.1f%% • %d/%d", s.taio.capacityPercent, s.taio.gatesOpen, s.taio.gatesTotal)
                 : "Taió --";
 
         String itup = s != null && s.ituporanga != null
-                ? String.format(new Locale("pt", "BR"), "Ituporanga %.1f%%", s.ituporanga.capacityPercent)
+                ? String.format(new Locale("pt", "BR"), "Ituporanga %.1f%% • %d/%d", s.ituporanga.capacityPercent, s.ituporanga.gatesOpen, s.ituporanga.gatesTotal)
                 : "Ituporanga --";
 
         rv.setTextViewText(

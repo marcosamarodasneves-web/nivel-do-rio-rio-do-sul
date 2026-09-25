@@ -35,7 +35,7 @@ public class MainActivity extends Activity {
 
     private Spinner spinner;
     private TextView level, status, trend, dams, updated, visits;
-    private RiverChartView chart;
+    private HydroChartView chart;
     private volatile boolean spinnerReady;
     private volatile boolean refreshing;
 
@@ -148,7 +148,9 @@ public class MainActivity extends Activity {
             trend.setText(HistoryStore.trend(this, b, r.levelMeters));
         }
 
-        chart.setSamples(HistoryStore.read(this, b));
+        chart.setData(HistoryStore.read(this, b),
+                s == null ? null : s.taio,
+                s == null ? null : s.ituporanga);
 
         StringBuilder ds = new StringBuilder();
         if (s != null && s.taio != null) {

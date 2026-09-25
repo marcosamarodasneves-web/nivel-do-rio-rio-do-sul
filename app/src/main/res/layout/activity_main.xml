@@ -61,10 +61,10 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <br.com.riodosul.niveldorio.RiverChartView
+        <br.com.riodosul.niveldorio.HydroChartView
             android:id="@+id/main_chart"
             android:layout_width="match_parent"
-            android:layout_height="220dp"
+            android:layout_height="430dp"
             android:layout_marginTop="18dp"
             android:background="#FFFFFF" />
 
@@ -72,7 +72,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="18dp"
-            android:text="Nível das barragens"
+            android:text="Resumo das barragens"
             android:textColor="@color/blue_dark"
             android:textSize="18sp"
             android:textStyle="bold" />

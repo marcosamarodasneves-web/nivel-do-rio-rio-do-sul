@@ -16,14 +16,6 @@
         android:orientation="vertical"
         android:padding="18dp">
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Nível do Rio • Rio do Sul"
-            android:textColor="@color/blue_dark"
-            android:textSize="24sp"
-            android:textStyle="bold" />
-
         <Spinner
             android:id="@+id/bridge_spinner"
             android:layout_width="match_parent"
@@ -31,76 +23,37 @@
             android:layout_marginTop="14dp"
             android:background="@drawable/button_outline" />
 
-        <TextView
-            android:id="@+id/main_level"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="14dp"
-            android:text="--,-- m"
-            android:textColor="@color/blue_dark"
-            android:textSize="52sp"
-            android:textStyle="bold" />
-
-        <LinearLayout
+        <br.com.riodosul.niveldorio.RiverStatusCardView
+            android:id="@+id/main_river_card"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-            <TextView
-                android:id="@+id/main_status"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="@drawable/chip_green"
-                android:text="Carregando"
-                android:textColor="@color/green"
-                android:textStyle="bold" />
-            <TextView
-                android:id="@+id/main_trend"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:background="@drawable/chip_blue"
-                android:text="→"
-                android:textColor="@color/blue"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <br.com.riodosul.niveldorio.HydroChartView
-            android:id="@+id/main_chart"
-            android:layout_width="match_parent"
-            android:layout_height="430dp"
+            android:layout_height="205dp"
             android:layout_marginTop="18dp"
             android:background="#FFFFFF" />
 
-        <LinearLayout
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingTop="14dp">
-            <TextView
-                android:id="@+id/main_updated"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Atualizando…"
-                android:textColor="@color/text_secondary" />
-            <TextView
-                android:id="@+id/main_visits"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="👥 -- acessos hoje"
-                android:textColor="@color/text_secondary"
-                android:textStyle="bold" />
-        </LinearLayout>
+            android:layout_marginTop="16dp"
+            android:text="Barragens"
+            android:textColor="@color/blue_dark"
+            android:textSize="18sp"
+            android:textStyle="bold" />
+
+        <br.com.riodosul.niveldorio.DamSummaryView
+            android:id="@+id/main_dams"
+            android:layout_width="match_parent"
+            android:layout_height="155dp"
+            android:layout_marginTop="8dp" />
 
         <TextView
-            android:id="@+id/main_refresh_info"
+            android:id="@+id/main_visits"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:paddingTop="10dp"
-            android:text="Arraste para baixo para atualizar • atualização automática a cada 5 min"
+            android:gravity="end"
+            android:paddingTop="12dp"
+            android:text="👥 -- acessos hoje"
             android:textColor="@color/text_secondary"
-            android:textSize="12sp" />
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/main_source"

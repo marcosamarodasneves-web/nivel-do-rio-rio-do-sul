@@ -127,7 +127,7 @@ public final class DataRepository {
         if (dam == null) return null;
 
         Double level = firstDouble(dam,
-                "level_m", "level", "water_level_m", "upstream_level_m",
+                "nivel_m", "level_m", "level", "water_level_m", "upstream_level_m",
                 "upstream_level", "montante_m", "montante");
 
         Double pct = firstDouble(dam,

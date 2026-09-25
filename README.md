@@ -12,6 +12,7 @@ Protótipo nativo Android sem bibliotecas de terceiros em runtime.
 - Botão **Trocar ponte** no widget (cicla pelas três pontes).
 - Barragens de Taió e Ituporanga com capacidade, nível e estado das comportas.
 - Painel gráfico combinado com histórico do rio, ocupação das barragens e comportas abertas/fechadas.
+- Atualização manual por gesto de arrastar para baixo, com indicador giratório durante a consulta.
 - Cache: se a fonte falhar, conserva a última leitura válida e marca como dado salvo.
 - Histórico local de até 24 h por ponte, coletado pelo próprio aparelho.
 - Contador diário de acessos para teste.

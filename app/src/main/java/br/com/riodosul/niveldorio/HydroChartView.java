@@ -24,6 +24,7 @@ public class HydroChartView extends View {
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final float density;
     private List<Sample> riverSamples = new ArrayList<>();
+    private Double currentRiverLevel;
     private DamReading taio;
     private DamReading ituporanga;
 
@@ -34,8 +35,9 @@ public class HydroChartView extends View {
         setLayerType(View.LAYER_TYPE_SOFTWARE, null);
     }
 
-    public void setData(List<Sample> samples, DamReading taio, DamReading ituporanga) {
+    public void setData(List<Sample> samples, Double currentRiverLevel, DamReading taio, DamReading ituporanga) {
         riverSamples = samples == null ? new ArrayList<>() : new ArrayList<>(samples);
+        this.currentRiverLevel = currentRiverLevel;
         this.taio = taio;
         this.ituporanga = ituporanga;
         invalidate();
@@ -96,7 +98,16 @@ public class HydroChartView extends View {
         }
 
         if (riverSamples.size() < 2) {
-            text(c, "Coletando histórico do rio…", graphLeft, (graphTop + graphBottom) / 2f + dp(5), 12, Color.rgb(102, 112, 133), false);
+            Double current = currentRiverLevel != null ? currentRiverLevel
+                    : (riverSamples.isEmpty() ? null : riverSamples.get(0).value);
+            String message = current == null
+                    ? "Aguardando a primeira leitura…"
+                    : String.format(new Locale("pt", "BR"), "Leitura atual: %.2f m", current);
+            text(c, message, graphLeft, (graphTop + graphBottom) / 2f + dp(5), 12, Color.rgb(102, 112, 133), false);
+            if (current != null) {
+                paint.setColor(Color.rgb(21, 101, 192));
+                c.drawCircle(graphRight, (graphTop + graphBottom) / 2f - dp(8), dp(6), paint);
+            }
             return;
         }
         double min = Double.MAX_VALUE, max = -Double.MAX_VALUE;

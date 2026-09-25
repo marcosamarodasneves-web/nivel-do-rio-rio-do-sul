@@ -1,12 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<br.com.riodosul.niveldorio.PullRefreshLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/main_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#F3F7FC"
-    android:fillViewport="true"
-    android:clipToPadding="false">
+    android:background="#F3F7FC">
 
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:clipToPadding="false">
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -68,26 +71,6 @@
             android:layout_marginTop="18dp"
             android:background="#FFFFFF" />
 
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:text="Resumo das barragens"
-            android:textColor="@color/blue_dark"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/main_dams"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:background="#FFFFFF"
-            android:padding="14dp"
-            android:text="Taió --%\nItuporanga --%"
-            android:textColor="@color/blue_dark"
-            android:textSize="16sp" />
-
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -110,19 +93,12 @@
                 android:textStyle="bold" />
         </LinearLayout>
 
-        <Button
-            android:id="@+id/refresh_button"
-            android:layout_width="match_parent"
-            android:layout_height="52dp"
-            android:layout_marginTop="16dp"
-            android:text="Atualizar agora" />
-
         <TextView
             android:id="@+id/main_refresh_info"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="10dp"
-            android:text="Atualização automática: app aberto a cada 5 min • widget até 30 min"
+            android:text="Arraste para baixo para atualizar • atualização automática a cada 5 min"
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
 
@@ -134,5 +110,13 @@
             android:text="Fonte: Defesa Civil de Rio do Sul / Defesa Civil SC"
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="4dp"
+            android:text="Desenvolvimento por Marcos A. das Neves"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
     </LinearLayout>
-</ScrollView>
+    </ScrollView>
+</br.com.riodosul.niveldorio.PullRefreshLayout>

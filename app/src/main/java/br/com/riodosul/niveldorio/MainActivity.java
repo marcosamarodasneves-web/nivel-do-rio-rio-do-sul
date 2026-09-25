@@ -10,7 +10,6 @@ import android.view.View;
 import android.view.WindowInsets;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
-import android.widget.Button;
 import android.widget.Spinner;
 import android.widget.TextView;
 
@@ -34,8 +33,9 @@ public class MainActivity extends Activity {
     };
 
     private Spinner spinner;
-    private TextView level, status, trend, dams, updated, visits;
+    private TextView level, status, trend, updated, visits;
     private HydroChartView chart;
+    private PullRefreshLayout pullRefresh;
     private volatile boolean spinnerReady;
     private volatile boolean refreshing;
 
@@ -44,15 +44,15 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
         applyStatusBarInset();
 
+        pullRefresh = findViewById(R.id.main_root);
         spinner = findViewById(R.id.bridge_spinner);
         level = findViewById(R.id.main_level);
         status = findViewById(R.id.main_status);
         trend = findViewById(R.id.main_trend);
-        dams = findViewById(R.id.main_dams);
         updated = findViewById(R.id.main_updated);
         visits = findViewById(R.id.main_visits);
         chart = findViewById(R.id.main_chart);
-        Button refresh = findViewById(R.id.refresh_button);
+        pullRefresh.setOnRefreshListener(() -> refreshData(true));
 
         String[] labels = new String[Bridge.values().length];
         for (int i = 0; i < labels.length; i++) {
@@ -78,11 +78,6 @@ public class MainActivity extends Activity {
             }
 
             @Override public void onNothingSelected(AdapterView<?> parent) {}
-        });
-
-        refresh.setOnClickListener(v -> {
-            refreshData();
-            scheduleNextAutoRefresh();
         });
 
         render(AppCache.load(this));
@@ -112,6 +107,10 @@ public class MainActivity extends Activity {
     }
 
     private void refreshData() {
+        refreshData(false);
+    }
+
+    private void refreshData(boolean fromPull) {
         if (refreshing) return;
         refreshing = true;
         updated.setText("Atualizando dados…");
@@ -122,6 +121,7 @@ public class MainActivity extends Activity {
 
             runOnUiThread(() -> {
                 refreshing = false;
+                if (fromPull) pullRefresh.setRefreshing(false);
                 render(s);
                 if (count >= 0) visits.setText(formatAccessCount(count));
                 refreshWidgets();
@@ -149,38 +149,9 @@ public class MainActivity extends Activity {
         }
 
         chart.setData(HistoryStore.read(this, b),
+                r == null ? null : r.levelMeters,
                 s == null ? null : s.taio,
                 s == null ? null : s.ituporanga);
-
-        StringBuilder ds = new StringBuilder();
-        if (s != null && s.taio != null) {
-            ds.append(String.format(
-                    new Locale("pt", "BR"),
-                    "Taió  %.1f%%  •  %.2f m  •  %d/%d comportas abertas",
-                    s.taio.capacityPercent,
-                    s.taio.levelMeters,
-                    s.taio.gatesOpen,
-                    s.taio.gatesTotal
-            ));
-        } else {
-            ds.append("Taió  --");
-        }
-
-        ds.append("\n");
-
-        if (s != null && s.ituporanga != null) {
-            ds.append(String.format(
-                    new Locale("pt", "BR"),
-                    "Ituporanga  %.1f%%  •  %.2f m  •  %d/%d comportas abertas",
-                    s.ituporanga.capacityPercent,
-                    s.ituporanga.levelMeters,
-                    s.ituporanga.gatesOpen,
-                    s.ituporanga.gatesTotal
-            ));
-        } else {
-            ds.append("Ituporanga  --");
-        }
-        dams.setText(ds.toString());
 
         if (s != null && s.fetchedAt > 0) {
             String stamp = new SimpleDateFormat(

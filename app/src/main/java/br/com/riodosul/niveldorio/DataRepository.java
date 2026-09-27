@@ -404,7 +404,7 @@ public final class DataRepository {
 
     private static String statusFromLevel(double level) {
         if (level < 4.50) return "Normal";
-        if (level < 5.50) return "Atenção";
+        if (level < 6.00) return "Atenção";
         if (level < 6.50) return "Alerta";
         return "Emergência";
     }

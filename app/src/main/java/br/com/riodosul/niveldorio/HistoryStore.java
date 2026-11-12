@@ -7,6 +7,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 
+/**
+ * Histórico coletado pelo próprio aparelho. Hoje é só reserva: o gráfico usa a série de 24 h da
+ * Defesa Civil e recorre a esta apenas quando aquela consulta falha.
+ */
 public final class HistoryStore {
     private static final long DAY_MS = 24L * 60L * 60L * 1000L;
     private static final long MIN_SAMPLE_GAP = 4L * 60L * 1000L;
@@ -37,7 +41,7 @@ public final class HistoryStore {
             try {
                 long t = Long.parseLong(parts[0]);
                 double v = Double.parseDouble(parts[1]);
-                if (t >= cutoff) out.add(new Sample(t, v));
+                if (t >= cutoff && v > 0) out.add(new Sample(t, v));
             } catch (Exception ignored) {}
         }
         return out;
@@ -54,11 +58,16 @@ public final class HistoryStore {
         AppPrefs.prefs(c).edit().putString(key(bridge), sb.toString()).apply();
     }
 
-    public static String trend(Context c, Bridge bridge, double current) {
-        List<Sample> list = read(c, bridge);
-        if (list.size() < 2) return "→ Estável";
-        double previous = list.get(Math.max(0, list.size() - 2)).value;
-        double delta = current - previous;
+    /** Tendência da última hora a partir de uma série (a do gráfico). */
+    public static String trend(List<Sample> list) {
+        if (list == null || list.size() < 2) return "→ Estável";
+        Sample last = list.get(list.size() - 1);
+        Sample ref = list.get(0);
+        for (int i = list.size() - 1; i >= 0; i--) {
+            ref = list.get(i);
+            if (last.timeMillis - ref.timeMillis >= 55L * 60L * 1000L) break;
+        }
+        double delta = last.value - ref.value;
         if (delta > 0.02) return "↗ Subindo";
         if (delta < -0.02) return "↘ Descendo";
         return "→ Estável";

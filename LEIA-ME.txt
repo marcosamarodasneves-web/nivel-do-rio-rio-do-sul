@@ -1,0 +1,57 @@
+﻿========================================
+NIVEL DO RIO - versao 1.2.0 (versionCode 12)
+========================================
+
+O QUE HA NESTA PASTA
+  app/                     codigo-fonte Android (Java, sem bibliotecas de terceiros)
+  apk/nivel-do-rio-v1.2.0-debug.apk   instalador pronto para o celular (debug)
+  supabase/migracao_1.2.0_horizontes.sql   RODAR UMA VEZ no SQL Editor do Supabase (ver abaixo)
+  supabase/river_forecasts.sql        script completo, para um projeto Supabase novo
+  docs/NOTAS-TECNICAS.md   verificacoes, testes e decisoes
+  build.gradle, settings.gradle, gradle.properties, README.md, .github/workflows/
+
+NOVIDADES DA 1.2.0
+  1. Previsao para 1, 2 e 3 horas. O card da tela inicial mostra as tres lado a lado
+     (nivel previsto, variacao e margem de erro); o "X no banco" saiu do card.
+     Para 2 e 3 h a conta usa 85% do ritmo medido por hora (calibrado com 21 dias de leituras):
+     erro medio ~4 cm (2 h) e ~6 cm (3 h) na Dom Tito Buss; ~2 cm e ~4 cm na BR-470.
+  2. As tres previsoes sao registradas (aparelho + Supabase, coluna nova horizon_h).
+  3. Memorial, secao 7 "A previsao tem acertado?": quadros com o aproveitamento de +1 h, +2 h
+     e +3 h nos ultimos 30 dias e grade com as previsoes mais recentes (uma linha por momento,
+     tres colunas). Sem referencia a tabela ou ao Supabase na tela.
+  4. Memorial, secao 4 "Chuva na bacia": dois toques no desenho da chuva abrem a grade de
+     municipios com a chuva acumulada em 24 h. Fonte: pluviometros da Defesa Civil agrupados pelo
+     municipio de cada estacao; onde o pluviometro nao envia leitura ha 3 h, entra a estimativa do
+     modelo Open-Meteo, marcada como "estimativa".
+  5. Tela da barragem (dois toques no card): grafico de 24 h refeito - area com degrade, minimo,
+     maximo, etiqueta do nivel atual com ocupacao, variacao em 24 h, reflexo correndo na linha e
+     barras de chuva por hora animadas. Icone animado de sol/chuva. As comportas sairam do grafico.
+     A chuva agora vem do PLUVIOMETRO DA PROPRIA BARRAGEM (antes era estimativa do modelo, que
+     chegou a mostrar 7 mm quando o pluviometro marcava 0); o modelo fica so como reserva.
+  6. Cards das barragens na tela inicial: o emoji de chuva virou icone animado.
+
+SUPABASE - PASSO OBRIGATORIO
+  Abra o SQL Editor do projeto e rode supabase/migracao_1.2.0_horizontes.sql (uma vez).
+  - Antes da migracao: a 1.2.0 envia so a previsao de +1 h e guarda as de +2 h e +3 h na fila do
+    aparelho; elas sobem sozinhas na primeira atualizacao depois da migracao.
+  - Depois da migracao: o app 1.1.0 deixa de conseguir enviar (usa a chave unica antiga).
+    Atualize os aparelhos para a 1.2.0.
+  Consulta de acompanhamento:
+    select * from public.river_forecasts_accuracy order by dia desc, bridge, horizon_h;
+
+INMET (pedido de chuva pela API do INMET)
+  Testado em 12/11/2026: a lista de estacoes (apitempo.inmet.gov.br/estacoes/T) e publica, mas os
+  dados de chuva das estacoes exigem um token pessoal do INMET (sem ele a API devolve vazio ou
+  "CHAVE INVALIDA"). Alem disso so ha uma estacao automatica a menos de 50 km de Rio do Sul
+  (A863 - Ituporanga). Por isso a grade usa os 18 pluviometros da Defesa Civil. Com um token do
+  INMET da para acrescentar a A863 como mais uma fonte.
+
+INSTALAR O APK
+  Copie apk/nivel-do-rio-v1.2.0-debug.apk para o celular e abra. Se o Android recusar a
+  atualizacao (INSTALL_FAILED_UPDATE_INCOMPATIBLE), desinstale a versao anterior antes:
+  APKs de debug gerados em computadores diferentes tem assinaturas diferentes.
+  minSdk 23 (Android 6.0+) | targetSdk 35
+
+COMPILAR
+  Android SDK 35, JDK 17 ou 21, Gradle 8.9+ (testado com 8.14):
+    gradle assembleDebug   ->  app/build/outputs/apk/debug/app-debug.apk

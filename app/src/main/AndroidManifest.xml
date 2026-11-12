@@ -19,6 +19,18 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ForecastActivity"
+            android:exported="false"
+            android:label="Previsão para a próxima hora"
+            android:parentActivityName=".MainActivity" />
+
+        <activity
+            android:name=".DamActivity"
+            android:exported="false"
+            android:label="Barragem — últimas 24 horas"
+            android:parentActivityName=".MainActivity" />
+
         <receiver
             android:name=".RiverWidgetProvider"
             android:exported="true">

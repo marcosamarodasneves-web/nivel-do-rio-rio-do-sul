@@ -23,12 +23,32 @@
             android:layout_marginTop="14dp"
             android:background="@drawable/button_outline" />
 
+        <TextView
+            android:id="@+id/main_status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="8dp"
+            android:text="Buscando dados da Defesa Civil…"
+            android:textColor="@color/text_secondary"
+            android:textSize="12sp" />
+
         <br.com.riodosul.niveldorio.RiverStatusCardView
             android:id="@+id/main_river_card"
             android:layout_width="match_parent"
-            android:layout_height="205dp"
-            android:layout_marginTop="18dp"
-            android:background="#FFFFFF" />
+            android:layout_height="162dp"
+            android:layout_marginTop="10dp" />
+
+        <br.com.riodosul.niveldorio.ForecastCardView
+            android:id="@+id/main_forecast_card"
+            android:layout_width="match_parent"
+            android:layout_height="162dp"
+            android:layout_marginTop="10dp" />
+
+        <br.com.riodosul.niveldorio.RiverChartView
+            android:id="@+id/main_river_chart"
+            android:layout_width="match_parent"
+            android:layout_height="260dp"
+            android:layout_marginTop="10dp" />
 
         <TextView
             android:layout_width="match_parent"
@@ -60,7 +80,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="8dp"
-            android:text="Fonte: Defesa Civil de Rio do Sul / Defesa Civil SC"
+            android:text="Fonte: Defesa Civil de Rio do Sul / Defesa Civil SC. Previsão de chuva: Open-Meteo. A previsão de nível é uma estimativa do aplicativo, não um aviso oficial."
             android:textColor="@color/text_secondary"
             android:textSize="12sp" />
         <TextView

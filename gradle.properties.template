@@ -1,0 +1,6 @@
+org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+android.useAndroidX=false
+android.nonTransitiveRClass=true
+# Preencha localmente ou passe -PSUPABASE_URL e -PSUPABASE_ANON_KEY ao Gradle.
+SUPABASE_URL=https://seu-projeto.supabase.co
+SUPABASE_ANON_KEY=cole_a_chave_anon_aqui

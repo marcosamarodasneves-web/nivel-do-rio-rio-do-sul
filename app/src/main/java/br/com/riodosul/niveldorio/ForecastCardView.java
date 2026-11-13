@@ -88,7 +88,7 @@ public class ForecastCardView extends View {
         c.restore();
 
         float left = dp(16);
-        text(c, "PREVISÃO PARA AS PRÓXIMAS HORAS", left, dp(24), 10, Color.argb(220, 255, 255, 255), true);
+        text(c, "PREVISÃO CENTRALIZADA · EXPERIMENTAL", left, dp(24), 9.5f, Color.argb(220, 255, 255, 255), true);
 
         if (forecast == null || !forecast.available) {
             String msg = loading ? "Buscando previsão centralizada…" : "Previsão indisponível agora";
@@ -96,6 +96,9 @@ public class ForecastCardView extends View {
             String reason = forecast != null && forecast.unavailableReason != null
                     && !forecast.unavailableReason.isEmpty() ? forecast.unavailableReason
                     : "Atualize a tela para tentar de novo.";
+            while (reason.length() > 3 && measure(reason, 10.5f, false) > w - dp(32)) {
+                reason = reason.substring(0, reason.length() - 2).trim() + "…";
+            }
             text(c, reason, left, dp(88), 10.5f, Color.argb(210, 255, 255, 255), false);
         } else {
             drawColumns(c, w);

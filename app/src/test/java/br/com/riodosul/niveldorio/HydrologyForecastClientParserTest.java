@@ -58,6 +58,19 @@ public class HydrologyForecastClientParserTest {
         assertTrue(response.latest.isEmpty());
     }
 
+    @Test public void neverShowsOldOrFutureForecastAsCurrent() throws Exception {
+        JSONObject root = new JSONObject(fixture());
+        long after = DataRepository.parseTimestamp("2026-11-13T02:00:00Z");
+        long before = DataRepository.parseTimestamp("2026-11-13T00:00:00Z");
+        for (long clock : new long[] { after, before }) {
+            HydrologyForecastClient.Response response = HydrologyForecastClient.parseResponse(root, clock, false);
+            for (Forecast forecast : response.latest.values()) {
+                assertFalse(forecast.available);
+                assertTrue(forecast.stale);
+            }
+        }
+    }
+
     @Test public void appliesOfficialCotaBoundaries() {
         Cotas cotas = new Cotas();
         assertEquals(0, cotas.faixa(4.499));

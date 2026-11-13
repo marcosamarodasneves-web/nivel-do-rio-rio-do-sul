@@ -31,7 +31,7 @@ public class Forecast {
         public double predictedLevel = Double.NaN;
         public double deltaCm;
         public double bandCm = Double.NaN;
-        /** 2 = alta, 1 = média, 0 = baixa, conforme o servidor. */
+        /** Indicador heurístico do servidor; não representa probabilidade de acerto. */
         public int confidence;
         public double trendCm;
         public double upstreamCm;
@@ -44,7 +44,7 @@ public class Forecast {
             return "→";
         }
         public String confidenceLabel() {
-            return confidence >= 2 ? "alta" : confidence == 1 ? "média" : "baixa";
+            return "experimental";
         }
     }
 
@@ -94,7 +94,7 @@ public class Forecast {
         return s;
     }
     public String confidenceLabel() {
-        return confidence >= 2 ? "alta" : confidence == 1 ? "média" : "baixa";
+        return "experimental";
     }
     public String direction() {
         if (deltaCm >= 1.0) return "subindo";

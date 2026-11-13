@@ -9,6 +9,9 @@ import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.Button;
+import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -31,9 +34,18 @@ public class ForecastActivity extends Activity {
     private Bridge bridge;
     private Snapshot snapshot;
     private boolean forecastRequestStarted;
+    private boolean forecastRequestFinished;
+    private String forecastRequestError = "";
+    private boolean onlyCheckedHistory;
+    private int historyLimit = ForecastHistorySelection.PAGE_SIZE;
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        if (savedInstanceState != null) {
+            onlyCheckedHistory = savedInstanceState.getBoolean("history_only_checked", false);
+            historyLimit = Math.max(ForecastHistorySelection.PAGE_SIZE,
+                    savedInstanceState.getInt("history_limit", ForecastHistorySelection.PAGE_SIZE));
+        }
         density = getResources().getDisplayMetrics().density;
         bridge = AppPrefs.getSelectedBridge(this);
         String name = getIntent() == null ? null : getIntent().getStringExtra(EXTRA_BRIDGE);
@@ -52,6 +64,12 @@ public class ForecastActivity extends Activity {
         setContentView(scroll);
         snapshot = AppCache.load(this);
         build(snapshot == null ? null : snapshot.forecasts.get(bridge));
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        state.putBoolean("history_only_checked", onlyCheckedHistory);
+        state.putInt("history_limit", historyLimit);
+        super.onSaveInstanceState(state);
     }
 
     private int dp(float value) { return Math.round(value * density); }
@@ -205,19 +223,92 @@ public class ForecastActivity extends Activity {
     private void addScorecard() {
         LinearLayout section = section("5", "Histórico e acurácia do servidor");
         section.addView(body("A grade abaixo é somente a resposta de histórico e estatísticas do serviço centralizado. O aparelho não cria previsões históricas, não confere níveis e não calcula percentuais."));
+        TextView period = label("Histórico: últimas 24 h · acurácia: últimos 7 dias", 11, GREY, false);
+        period.setPadding(0, dp(8), 0, dp(2));
+        section.addView(period);
+
+        final CheckBox checked = new CheckBox(this);
+        checked.setText("Já conferidas");
+        checked.setTextColor(INK);
+        checked.setTextSize(14);
+        checked.setMinHeight(dp(48));
+        checked.setButtonTintList(android.content.res.ColorStateList.valueOf(Color.rgb(123, 31, 162)));
+        checked.setChecked(onlyCheckedHistory);
+        checked.setContentDescription("Já conferidas: mostrar apenas linhas com os três horizontes conferidos pelo servidor");
+        section.addView(checked);
+        TextView filterHelp = label("Quando marcado, exibe somente linhas com +1 h, +2 h e +3 h já conferidas. Os percentuais acima não são alterados pelo filtro.", 11, GREY, false);
+        filterHelp.setPadding(0, 0, 0, dp(8));
+        section.addView(filterHelp);
+
+        final TextView count = label("", 12, GREY, false);
+        count.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);
+        section.addView(count);
         final ForecastScorecardView score = new ForecastScorecardView(this);
         LinearLayout.LayoutParams scoreParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
         scoreParams.topMargin = dp(10);
         section.addView(score, scoreParams);
+
+        final Button more = new Button(this);
+        more.setText("Mostrar mais");
+        more.setAllCaps(false);
+        more.setTextSize(14);
+        more.setTextColor(Color.WHITE);
+        more.setBackgroundTintList(android.content.res.ColorStateList.valueOf(Color.rgb(123, 31, 162)));
+        more.setMinHeight(dp(48));
+        LinearLayout.LayoutParams moreParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(48));
+        moreParams.topMargin = dp(10);
+        section.addView(more, moreParams);
+
         HydrologyForecastClient.Response response = snapshot == null ? null : snapshot.forecastResponse;
         if (response == null) response = HydrologyForecastClient.loadCached(this);
-        if (response != null && response.contractV2) {
-            score.setData(response.groupsFor(bridge, 12), accuracy(response), bridge.displayName, response.disclaimer);
-        } else {
+        final HydrologyForecastClient.Response historyResponse = response;
+        updateHistory(score, count, more, historyResponse);
+        checked.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(CompoundButton button, boolean isChecked) {
+                onlyCheckedHistory = isChecked;
+                historyLimit = ForecastHistorySelection.PAGE_SIZE;
+                updateHistory(score, count, more, historyResponse);
+            }
+        });
+        more.setOnClickListener(new View.OnClickListener() {
+            @Override public void onClick(View view) {
+                historyLimit += ForecastHistorySelection.PAGE_SIZE;
+                updateHistory(score, count, more, historyResponse);
+            }
+        });
+        // Uma consulta nova a cada abertura; cache não mantém histórico nem estatísticas.
+        requestForecastIfNeeded();
+    }
+
+    private void updateHistory(ForecastScorecardView score, TextView count, Button more,
+                               HydrologyForecastClient.Response response) {
+        boolean hasResponse = response != null && response.contractV2;
+        boolean hasHistory = hasResponse && (!response.history.isEmpty() || !response.accuracy.isEmpty());
+        if (!hasHistory && !forecastRequestFinished) {
             score.setLoading();
-            requestForecastIfNeeded();
+            count.setText("Consultando o histórico do servidor…");
+            more.setVisibility(View.GONE);
+            return;
         }
+        List<HydrologyForecastClient.HistoryGroup> all = hasResponse
+                ? response.groupsFor(bridge, Integer.MAX_VALUE) : java.util.Collections.emptyList();
+        // Filtrar antes de limitar evita ocultar as linhas antigas de +2 h e +3 h.
+        List<HydrologyForecastClient.HistoryGroup> filtered = ForecastHistorySelection.filter(all, onlyCheckedHistory);
+        List<HydrologyForecastClient.HistoryGroup> visible = ForecastHistorySelection.visible(filtered, historyLimit);
+        String summary = visible.size() + " de " + filtered.size() + " linhas"
+                + (onlyCheckedHistory ? " com os três horizontes conferidos" : " recebidas do servidor");
+        if (!forecastRequestError.isEmpty()) summary += " · atualização indisponível; último histórico recebido";
+        count.setText(summary);
+        score.setEmptyMessage(onlyCheckedHistory
+                ? "Ainda não há linhas com os três horizontes conferidos."
+                : "O servidor não retornou histórico para esta ponte.");
+        score.setData(visible, hasResponse ? accuracy(response) : null, bridge.displayName,
+                hasResponse ? response.disclaimer : "Estimativa experimental; não substitui os avisos oficiais da Defesa Civil.");
+        int remaining = filtered.size() - visible.size();
+        more.setVisibility(remaining > 0 ? View.VISIBLE : View.GONE);
+        more.setContentDescription("Mostrar mais " + Math.min(ForecastHistorySelection.PAGE_SIZE, remaining) + " linhas do histórico");
     }
 
     private HydrologyForecastClient.AccuracyRow[] accuracy(HydrologyForecastClient.Response response) {
@@ -231,14 +322,21 @@ public class ForecastActivity extends Activity {
         forecastRequestStarted = true;
         HydrologyForecastClient.fetchAsync(this, new HydrologyForecastClient.Callback() {
             @Override public void onComplete(final HydrologyForecastClient.Response response, Exception error) {
-                if (response == null || isFinishing()) return;
+                if (isFinishing()) return;
+                final boolean requestFailed = error != null;
                 runOnUiThread(new Runnable() {
                     @Override public void run() {
-                        snapshot = AppCache.load(ForecastActivity.this);
-                        if (snapshot == null) snapshot = new Snapshot();
-                        HydrologyForecastClient.applyToSnapshot(snapshot, response, false);
-                        AppCache.save(ForecastActivity.this, snapshot);
-                        build(snapshot.forecasts.get(bridge));
+                        if (isFinishing() || isDestroyed()) return;
+                        forecastRequestFinished = true;
+                        forecastRequestError = requestFailed || response == null || !response.contractV2
+                                ? "Falha ao atualizar" : "";
+                        if (response != null && response.contractV2) {
+                            snapshot = AppCache.load(ForecastActivity.this);
+                            if (snapshot == null) snapshot = new Snapshot();
+                            HydrologyForecastClient.applyToSnapshot(snapshot, response, false);
+                            AppCache.save(ForecastActivity.this, snapshot);
+                        }
+                        build(snapshot == null ? null : snapshot.forecasts.get(bridge));
                     }
                 });
             }

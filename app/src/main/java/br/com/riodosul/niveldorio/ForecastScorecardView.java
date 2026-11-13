@@ -32,13 +32,13 @@ public class ForecastScorecardView extends View {
     private static final float TILE_H = 72f;
     private static final float HEAD_H = 24f;
     private static final float ROW_H = 40f;
-    private static final int MAX_ROWS = 12;
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final float density;
     private final List<HydrologyForecastClient.HistoryGroup> groups = new ArrayList<>();
     private final HydrologyForecastClient.AccuracyRow[] stats = new HydrologyForecastClient.AccuracyRow[3];
     private String bridgeLabel = "";
     private String disclaimer = "";
+    private String emptyMessage = "O servidor não retornou histórico para esta ponte.";
     private boolean loading = true;
     private long appearAt = System.currentTimeMillis();
 
@@ -54,13 +54,16 @@ public class ForecastScorecardView extends View {
         invalidate();
     }
 
+    public void setEmptyMessage(String message) {
+        emptyMessage = message == null ? "" : message;
+        invalidate();
+    }
+
     public void setData(List<HydrologyForecastClient.HistoryGroup> groups,
                         HydrologyForecastClient.AccuracyRow[] stats,
                         String bridgeLabel, String disclaimer) {
         this.groups.clear();
-        if (groups != null) {
-            for (int i = 0; i < groups.size() && i < MAX_ROWS; i++) this.groups.add(groups.get(i));
-        }
+        if (groups != null) this.groups.addAll(groups);
         for (int i = 0; i < this.stats.length; i++) {
             this.stats[i] = stats != null && i < stats.length ? stats[i] : null;
         }
@@ -124,12 +127,12 @@ public class ForecastScorecardView extends View {
             if (isShown()) postInvalidateDelayed(200);
             return;
         }
-        text(c, "Servidor · últimos 7 dias — " + bridgeLabel, left, y, 12, INK, true, 255);
+        text(c, "Servidor — " + bridgeLabel, left, y, 12, INK, true, 255);
         y += dp(10);
         drawTiles(c, left, right, y);
         y += dp(TILE_H + 12);
         if (groups.isEmpty()) {
-            text(c, "O servidor não retornou histórico para esta ponte.", left, y + dp(8), 10.5f, GREY, false, 255);
+            text(c, emptyMessage, left, y + dp(8), 10.5f, GREY, false, 255);
             text(c, "Nenhuma previsão antiga é criada ou calculada neste aparelho.", left, y + dp(23), 10.5f, GREY, false, 255);
             if (!disclaimer.isEmpty()) text(c, disclaimer, left, y + dp(38), 9, SOFT, false, 255);
             return;
@@ -140,6 +143,7 @@ public class ForecastScorecardView extends View {
         SimpleDateFormat min = new SimpleDateFormat("HH:mm", BR);
         long now = System.currentTimeMillis();
         float[] columns = columns(left, right);
+        boolean animating = false;
         for (int i = 0; i < groups.size(); i++) {
             HydrologyForecastClient.HistoryGroup group = groups.get(i);
             float rowTop = y + i * dp(ROW_H);
@@ -151,7 +155,8 @@ public class ForecastScorecardView extends View {
             }
             paint.setColor(LINE);
             c.drawRect(left, rowTop + dp(ROW_H) - dp(.7f), right, rowTop + dp(ROW_H), paint);
-            float t = clamp((now - appearAt - i * 90L) / 240f);
+            float t = clamp((now - appearAt - Math.min(i, 11) * 30L) / 180f);
+            animating |= t < 1f;
             int alpha = (int) (255 * t);
             float dy = (1f - t) * dp(7);
             float line1 = rowTop + dp(17) + dy, line2 = rowTop + dp(31) + dy;
@@ -166,7 +171,7 @@ public class ForecastScorecardView extends View {
         text(c, "✔ dentro   ≈ quase   ✘ fora   — sem medição   … pendente", left, noteY, 9, GREY, false, 255);
         text(c, "Níveis, margem, resultado e estatísticas são os valores do servidor.", left, noteY + dp(13), 9, GREY, false, 255);
         if (!disclaimer.isEmpty()) text(c, disclaimer, left, noteY + dp(26), 8.5f, SOFT, false, 255);
-        if (isShown()) postInvalidateDelayed(40);
+        if (animating && isShown()) postInvalidateDelayed(40);
     }
 
     private void drawHeader(Canvas c, float left, float right, float y) {

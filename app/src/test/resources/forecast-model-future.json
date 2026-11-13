@@ -1,0 +1,8 @@
+{
+  "model_version": "adaptive-v4",
+  "accuracy_days": 90,
+  "retention_days": 90,
+  "latest": [{"bridge": "dom-tito", "model_version": "adaptive-v4", "available": true}],
+  "forecasts": [],
+  "accuracy": []
+}

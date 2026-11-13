@@ -1,0 +1,32 @@
+{
+  "model_version": "adaptive-v3",
+  "as_of": "2026-11-13T00:46:18.215Z",
+  "accuracy_days": 60,
+  "retention_days": 60,
+  "latest": [
+    {
+      "bridge": "dom-tito",
+      "model_version": "adaptive-v3",
+      "available": true,
+      "base_time": "2026-11-13T00:40:00.000Z",
+      "generated_at": "2026-11-13T00:46:17.572Z",
+      "current_level": 6.0,
+      "horizons": [
+        {"hours": 1, "target_time": "2026-11-13T01:40:00.000Z", "predicted_level": 5.98, "delta_cm": -2, "band_cm": 4, "confidence": 1},
+        {"hours": 2, "target_time": "2026-11-13T02:40:00.000Z", "predicted_level": 6.01, "delta_cm": 1, "band_cm": 7, "confidence": 1},
+        {"hours": 3, "target_time": "2026-11-13T03:40:00.000Z", "predicted_level": 6.07, "delta_cm": 7, "band_cm": 10, "confidence": 1}
+      ],
+      "notes": ["Pesos adaptativos recebidos do servidor."]
+    },
+    {"bridge": "br-470", "model_version": "deterministic-v2", "available": true}
+  ],
+  "forecasts": [
+    {"bridge": "dom-tito", "horizon_h": 1, "base_time": "2026-11-13T00:40:00.000Z", "target_time": "2026-11-13T01:40:00.000Z", "predicted_level": 5.98, "outcome": "pendente", "model_version": "adaptive-v3"},
+    {"bridge": "dom-tito", "horizon_h": 2, "base_time": "2026-11-13T00:40:00.000Z", "target_time": "2026-11-13T02:40:00.000Z", "predicted_level": 6.01, "outcome": "pendente", "model_version": "deterministic-v2"}
+  ],
+  "accuracy": [
+    {"bridge": "dom-tito", "horizon_h": 1, "model_version": "adaptive-v3", "previsoes": 0, "conferidas": 0, "pct_dentro": null},
+    {"bridge": "dom-tito", "horizon_h": 2, "model_version": "deterministic-v2", "previsoes": 9, "conferidas": 9, "pct_dentro": 100}
+  ],
+  "disclaimer": "Estimativa experimental; não substitui os avisos oficiais da Defesa Civil."
+}

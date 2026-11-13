@@ -30,6 +30,9 @@ import java.util.concurrent.TimeUnit;
 public final class HydrologyForecastClient {
     private static final String BASE = BuildConfig.HYDROLOGY_API_BASE;
     static final String MODEL_VERSION = "deterministic-v2";
+    static final String ADAPTIVE_MODEL_VERSION = "adaptive-v3";
+    private static final int LEGACY_ACCURACY_DAYS = 7;
+    private static final int LEGACY_RETENTION_DAYS = 7;
     private static final String CACHE_KEY = "hydrology_forecasts_json_v2";
     private static final long STALE_AFTER_MS = 30L * 60L * 1000L;
 
@@ -57,10 +60,11 @@ public final class HydrologyForecastClient {
         public String modelVersion = "";
     }
 
-    /** Estatística de acurácia calculada pelo servidor para os últimos sete dias. */
+    /** Estatística de acurácia calculada pelo servidor para o período informado na resposta. */
     public static final class AccuracyRow {
         public String bridge = "";
         public int horizonH;
+        public String modelVersion = "";
         public int previsoes;
         public int conferidas;
         public int dentroDaMargem;
@@ -86,7 +90,14 @@ public final class HydrologyForecastClient {
         public String asOf = "";
         public String disclaimer = "";
         public String modelVersion = "";
-        public boolean contractV2;
+        /** Janela de acurácia informada pelo servidor; 7 mantém compatibilidade com a API antiga. */
+        public int accuracyDays = LEGACY_ACCURACY_DAYS;
+        /** Retenção esperada informada pelo servidor; 7 mantém compatibilidade com a API antiga. */
+        public int retentionDays = LEGACY_RETENTION_DAYS;
+        /** Nome novo para o contrato aceito; contractV2 permanece como alias de compatibilidade. */
+        public boolean contractSupported;
+        /** @deprecated Use contractSupported; o alias inclui deterministic-v2 e adaptive-v3. */
+        @Deprecated public boolean contractV2;
         public long fetchedAt;
 
         public List<HistoryGroup> groupsFor(Bridge bridge, int maxGroups) {
@@ -158,16 +169,16 @@ public final class HydrologyForecastClient {
                 } finally {
                     pool.shutdownNow();
                 }
-                if (!merged.contractV2) {
+                if (!merged.contractSupported) {
                     // Entrega uma resposta explícita para a UI marcar o card como indisponível.
                     // Níveis, chuva e barragens continuam independentes desta falha.
                     merged.modelVersion = "";
                     if (callback != null) callback.onComplete(merged, firstError == null
-                            ? new IllegalStateException("Contrato de previsão v2 indisponível.") : firstError);
+                            ? new IllegalStateException("Contrato de previsão centralizada indisponível.") : firstError);
                     return;
                 }
                 try {
-                    // Um payload v2 vazio é válido: a UI deve mostrar indisponível, nunca calcular fallback.
+                    // Um payload aceito vazio é válido: a UI deve mostrar indisponível, nunca calcular fallback.
                     JSONObject cache = toJson(merged);
                     // Apenas o último snapshot. História e acurácia permanecem no servidor.
                     cache.remove("forecasts");
@@ -216,8 +227,12 @@ public final class HydrologyForecastClient {
         response.asOf = root.optString("as_of", "");
         response.disclaimer = root.optString("disclaimer", "");
         response.modelVersion = root.optString("model_version", "");
-        response.contractV2 = MODEL_VERSION.equals(response.modelVersion);
-        if (!response.contractV2) return response;
+        response.accuracyDays = root.optInt("accuracy_days", LEGACY_ACCURACY_DAYS);
+        response.retentionDays = root.optInt("retention_days", LEGACY_RETENTION_DAYS);
+        response.contractSupported = isSupportedModelVersion(response.modelVersion);
+        // Mantém o campo usado por versões anteriores do app, mas agora cobre os dois contratos.
+        response.contractV2 = response.contractSupported;
+        if (!response.contractSupported) return response;
         JSONArray latest = root.optJSONArray("latest");
         if (latest != null) {
             for (int i = 0; i < latest.length(); i++) {
@@ -226,9 +241,8 @@ public final class HydrologyForecastClient {
                 Bridge bridge = bridgeFromId(item.optString("bridge", ""));
                 if (bridge == null) continue;
                 response.requested.add(bridge);
-                if (!MODEL_VERSION.equals(item.optString("model_version", ""))) continue;
-                Forecast forecast = parseLatest(bridge, item, now, fromCache);
-                if (response.modelVersion.isEmpty()) response.modelVersion = forecast.modelVersion;
+                if (!rowIsSupported(item, response.modelVersion)) continue;
+                Forecast forecast = parseLatest(bridge, item, now, fromCache, response.modelVersion);
                 response.latest.put(bridge, forecast);
             }
         }
@@ -236,17 +250,32 @@ public final class HydrologyForecastClient {
         if (history != null) {
             for (int i = 0; i < history.length(); i++) {
                 JSONObject item = history.optJSONObject(i);
-                if (item != null && rowIsV2(item)) response.history.add(parseHistory(item));
+                if (item != null && rowIsSupported(item, response.modelVersion)) {
+                    response.history.add(parseHistory(item, response.modelVersion));
+                }
             }
         }
         JSONArray accuracy = root.optJSONArray("accuracy");
         if (accuracy != null) {
             for (int i = 0; i < accuracy.length(); i++) {
                 JSONObject item = accuracy.optJSONObject(i);
-                if (item != null && rowIsV2(item)) response.accuracy.add(parseAccuracy(item));
+                if (item != null && rowIsSupported(item, response.modelVersion)) {
+                    response.accuracy.add(parseAccuracy(item, response.modelVersion));
+                }
             }
         }
         return response;
+    }
+
+    /** Retorna somente as versões de contrato que esta versão do app sabe consumir. */
+    static boolean isSupportedModelVersion(String modelVersion) {
+        return MODEL_VERSION.equals(modelVersion) || ADAPTIVE_MODEL_VERSION.equals(modelVersion);
+    }
+
+    /** Ordena versões aceitas para que uma emissão adaptativa prefira o fallback determinístico. */
+    private static int modelRank(String modelVersion) {
+        return ADAPTIVE_MODEL_VERSION.equals(modelVersion) ? 2
+                : MODEL_VERSION.equals(modelVersion) ? 1 : 0;
     }
 
     static String bridgeId(Bridge bridge) {
@@ -277,7 +306,7 @@ public final class HydrologyForecastClient {
             Object root = new JSONTokener(body.toString().trim()).nextValue();
             if (!(root instanceof JSONObject)) throw new IllegalStateException("Resposta de previsão não é JSON.");
             Response parsed = parseResponse((JSONObject) root, System.currentTimeMillis(), false);
-            if (!parsed.contractV2) throw new IllegalStateException("Resposta de previsão não usa deterministic-v2.");
+            if (!parsed.contractSupported) throw new IllegalStateException("Resposta de previsão usa uma versão de modelo não suportada.");
             return parsed;
         } finally {
             if (connection != null) connection.disconnect();
@@ -286,10 +315,28 @@ public final class HydrologyForecastClient {
 
     private static void merge(Response target, Response source) {
         if (source == null) return;
+        if (!source.contractSupported) return;
+        if (target.modelVersion.isEmpty()) {
+            target.modelVersion = source.modelVersion;
+            target.accuracyDays = source.accuracyDays;
+            target.retentionDays = source.retentionDays;
+        } else if (!target.modelVersion.equals(source.modelVersion)) {
+            // Uma consulta pode cair para v2 enquanto outra já recebe v3. Não misture as versões:
+            // prefira o contrato adaptativo e descarte o snapshot anterior de versão inferior.
+            if (modelRank(source.modelVersion) <= modelRank(target.modelVersion)) return;
+            target.modelVersion = source.modelVersion;
+            target.accuracyDays = source.accuracyDays;
+            target.retentionDays = source.retentionDays;
+            target.asOf = source.asOf;
+            target.disclaimer = source.disclaimer;
+            target.latest.clear();
+            target.history.clear();
+            target.accuracy.clear();
+        }
         target.asOf = newer(target.asOf, source.asOf);
-        target.contractV2 = target.contractV2 || source.contractV2;
+        target.contractSupported = true;
+        target.contractV2 = true;
         if (target.disclaimer.isEmpty()) target.disclaimer = source.disclaimer;
-        if (target.modelVersion.isEmpty()) target.modelVersion = source.modelVersion;
         target.requested.addAll(source.requested);
         target.latest.putAll(source.latest);
         for (HistoryRow row : source.history) {
@@ -303,24 +350,30 @@ public final class HydrologyForecastClient {
     private static boolean containsHistory(List<HistoryRow> rows, HistoryRow candidate) {
         for (HistoryRow row : rows) {
             if (row.bridge.equals(candidate.bridge) && row.horizonH == candidate.horizonH
+                    && row.modelVersion.equals(candidate.modelVersion)
                     && row.baseTime == candidate.baseTime && row.targetTime == candidate.targetTime) return true;
         }
         return false;
     }
 
     private static boolean containsAccuracy(List<AccuracyRow> rows, AccuracyRow candidate) {
-        for (AccuracyRow row : rows) if (row.bridge.equals(candidate.bridge) && row.horizonH == candidate.horizonH) return true;
+        for (AccuracyRow row : rows) {
+            if (row.bridge.equals(candidate.bridge) && row.horizonH == candidate.horizonH
+                    && row.modelVersion.equals(candidate.modelVersion)) return true;
+        }
         return false;
     }
 
-    private static Forecast parseLatest(Bridge bridge, JSONObject item, long now, boolean fromCache) {
+    private static Forecast parseLatest(Bridge bridge, JSONObject item, long now, boolean fromCache,
+                                        String selectedModelVersion) {
         Forecast forecast = new Forecast();
         forecast.bridge = bridge;
-        forecast.modelVersion = item.optString("model_version", "");
+        String rowModelVersion = item.optString("model_version", "");
+        forecast.modelVersion = rowModelVersion.isEmpty() ? selectedModelVersion : rowModelVersion;
         forecast.generatedAt = item.optString("generated_at", "");
         forecast.available = item.optBoolean("available", false);
         forecast.unavailableReason = item.optString("unavailable_reason", "");
-        if (!MODEL_VERSION.equals(forecast.modelVersion)) {
+        if (!selectedModelVersion.equals(forecast.modelVersion)) {
             forecast.available = false;
             forecast.unavailableReason = "Versão de modelo não suportada nesta versão do app.";
         }
@@ -422,12 +475,18 @@ public final class HydrologyForecastClient {
         }
     }
 
-    private static boolean rowIsV2(JSONObject item) {
-        String version = item.optString("model_version", MODEL_VERSION);
-        return MODEL_VERSION.equals(version);
+    /**
+     * A raiz escolhe o contrato da resposta. Uma linha sem versão só é aceita no v2, como
+     * compatibilidade com payloads antigos; adaptive-v3 exige a versão explícita na linha.
+     */
+    private static boolean rowIsSupported(JSONObject item, String selectedModelVersion) {
+        if (item == null || !isSupportedModelVersion(selectedModelVersion)) return false;
+        String rowVersion = item.optString("model_version", "");
+        return rowVersion.isEmpty() ? MODEL_VERSION.equals(selectedModelVersion)
+                : selectedModelVersion.equals(rowVersion);
     }
 
-    private static HistoryRow parseHistory(JSONObject item) {
+    private static HistoryRow parseHistory(JSONObject item, String selectedModelVersion) {
         HistoryRow row = new HistoryRow();
         row.bridge = item.optString("bridge", "");
         row.horizonH = item.optInt("horizon_h", 0);
@@ -442,14 +501,17 @@ public final class HydrologyForecastClient {
         row.actualTime = timestamp(item.optString("actual_time", ""));
         row.actualLevel = nullableNumber(item, "actual_level", Double.NaN);
         row.errorCm = nullableNumber(item, "error_cm", Double.NaN);
-        row.modelVersion = item.optString("model_version", "");
+        row.modelVersion = item.optString("model_version", selectedModelVersion);
+        if (row.modelVersion.isEmpty()) row.modelVersion = selectedModelVersion;
         return row;
     }
 
-    private static AccuracyRow parseAccuracy(JSONObject item) {
+    private static AccuracyRow parseAccuracy(JSONObject item, String selectedModelVersion) {
         AccuracyRow row = new AccuracyRow();
         row.bridge = item.optString("bridge", "");
         row.horizonH = item.optInt("horizon_h", 0);
+        row.modelVersion = item.optString("model_version", selectedModelVersion);
+        if (row.modelVersion.isEmpty()) row.modelVersion = selectedModelVersion;
         row.previsoes = item.optInt("previsoes", 0);
         row.conferidas = item.optInt("conferidas", 0);
         row.dentroDaMargem = item.optInt("dentro_da_margem", 0);
@@ -465,6 +527,8 @@ public final class HydrologyForecastClient {
         JSONObject root = new JSONObject();
         root.put("as_of", response.asOf);
         root.put("model_version", response.modelVersion);
+        root.put("accuracy_days", response.accuracyDays);
+        root.put("retention_days", response.retentionDays);
         root.put("disclaimer", response.disclaimer);
         JSONArray latest = new JSONArray();
         for (Forecast forecast : response.latest.values()) latest.put(latestJson(forecast));
@@ -494,6 +558,7 @@ public final class HydrologyForecastClient {
             JSONObject value = new JSONObject();
             value.put("bridge", row.bridge);
             value.put("horizon_h", row.horizonH);
+            value.put("model_version", row.modelVersion);
             value.put("previsoes", row.previsoes);
             value.put("conferidas", row.conferidas);
             value.put("dentro_da_margem", row.dentroDaMargem);

@@ -1,0 +1,8 @@
+{
+  "model_version": "deterministic-v2",
+  "as_of": "2026-11-13T00:46:18.215Z",
+  "latest": [{"bridge": "dom-tito", "available": true, "base_time": "2026-11-13T00:40:00.000Z", "horizons": [{"hours": 1, "target_time": "2026-11-13T01:40:00.000Z", "predicted_level": 5.98}]}],
+  "forecasts": [{"bridge": "dom-tito", "horizon_h": 1, "base_time": "2026-11-13T00:40:00.000Z", "target_time": "2026-11-13T01:40:00.000Z", "predicted_level": 5.98, "outcome": "pendente"}],
+  "accuracy": [{"bridge": "dom-tito", "horizon_h": 1, "previsoes": 0, "conferidas": 0, "pct_dentro": null}],
+  "disclaimer": "Estimativa experimental."
+}

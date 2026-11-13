@@ -1,0 +1,10 @@
+{
+  "model_version": "adaptive-v3",
+  "as_of": "2026-11-13T00:46:18.215Z",
+  "accuracy_days": 60,
+  "retention_days": 60,
+  "latest": [],
+  "forecasts": [],
+  "accuracy": [],
+  "disclaimer": "Estimativa experimental."
+}

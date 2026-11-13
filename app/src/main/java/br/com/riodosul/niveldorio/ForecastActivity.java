@@ -117,6 +117,11 @@ public class ForecastActivity extends Activity {
         SimpleDateFormat hm = new SimpleDateFormat("HH:mm", BR);
         LinearLayout summary = card();
         summary.addView(label("Horizontes retornados pelo servidor", 15, INK, true));
+        if (HydrologyForecastClient.ADAPTIVE_MODEL_VERSION.equals(forecast.modelVersion)) {
+            TextView adaptive = label("Aprendizado adaptativo · experimental", 12, Color.rgb(123, 31, 162), true);
+            adaptive.setPadding(0, dp(6), 0, 0);
+            summary.addView(adaptive);
+        }
         String base = forecast.baseTime > 0 ? hm.format(new Date(forecast.baseTime)) : "horário não informado";
         summary.addView(body("Base de referência: " + base + ". O aplicativo não recalcula, altera ou completa os valores recebidos."));
         for (int hours = 1; hours <= 3; hours++) {
@@ -223,7 +228,10 @@ public class ForecastActivity extends Activity {
     private void addScorecard() {
         LinearLayout section = section("5", "Histórico e acurácia do servidor");
         section.addView(body("A grade abaixo é somente a resposta de histórico e estatísticas do serviço centralizado. O aparelho não cria previsões históricas, não confere níveis e não calcula percentuais."));
-        TextView period = label("Histórico: últimas 24 h · acurácia: últimos 7 dias", 11, GREY, false);
+        HydrologyForecastClient.Response response = snapshot == null ? null : snapshot.forecastResponse;
+        if (response == null) response = HydrologyForecastClient.loadCached(this);
+        final HydrologyForecastClient.Response historyResponse = response;
+        TextView period = label(periodLabel(historyResponse), 11, GREY, false);
         period.setPadding(0, dp(8), 0, dp(2));
         section.addView(period);
 
@@ -261,9 +269,6 @@ public class ForecastActivity extends Activity {
         moreParams.topMargin = dp(10);
         section.addView(more, moreParams);
 
-        HydrologyForecastClient.Response response = snapshot == null ? null : snapshot.forecastResponse;
-        if (response == null) response = HydrologyForecastClient.loadCached(this);
-        final HydrologyForecastClient.Response historyResponse = response;
         updateHistory(score, count, more, historyResponse);
         checked.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
             @Override public void onCheckedChanged(CompoundButton button, boolean isChecked) {
@@ -284,7 +289,7 @@ public class ForecastActivity extends Activity {
 
     private void updateHistory(ForecastScorecardView score, TextView count, Button more,
                                HydrologyForecastClient.Response response) {
-        boolean hasResponse = response != null && response.contractV2;
+        boolean hasResponse = response != null && response.contractSupported;
         boolean hasHistory = hasResponse && (!response.history.isEmpty() || !response.accuracy.isEmpty());
         if (!hasHistory && !forecastRequestFinished) {
             score.setLoading();
@@ -317,6 +322,18 @@ public class ForecastActivity extends Activity {
         return values;
     }
 
+    private String periodLabel(HydrologyForecastClient.Response response) {
+        int days = response == null ? 0 : response.accuracyDays;
+        int retention = response == null ? 0 : response.retentionDays;
+        String stats = days > 0 ? "últimos " + days + " dias" : "período informado pelo servidor";
+        String expected = retention > 0 ? " · retenção esperada: " + retention + " dias" : "";
+        if (response != null && HydrologyForecastClient.ADAPTIVE_MODEL_VERSION.equals(response.modelVersion)
+                && response.accuracy.isEmpty() && retention > 0) {
+            expected += " · aguardando as primeiras previsões conferidas; não é necessário esperar 60 dias";
+        }
+        return "Histórico: últimas 24 h · acurácia: " + stats + expected;
+    }
+
     private void requestForecastIfNeeded() {
         if (forecastRequestStarted) return;
         forecastRequestStarted = true;
@@ -328,9 +345,9 @@ public class ForecastActivity extends Activity {
                     @Override public void run() {
                         if (isFinishing() || isDestroyed()) return;
                         forecastRequestFinished = true;
-                        forecastRequestError = requestFailed || response == null || !response.contractV2
+                        forecastRequestError = requestFailed || response == null || !response.contractSupported
                                 ? "Falha ao atualizar" : "";
-                        if (response != null && response.contractV2) {
+                        if (response != null && response.contractSupported) {
                             snapshot = AppCache.load(ForecastActivity.this);
                             if (snapshot == null) snapshot = new Snapshot();
                             HydrologyForecastClient.applyToSnapshot(snapshot, response, false);
@@ -349,6 +366,9 @@ public class ForecastActivity extends Activity {
         sourceCard.addView(body("Níveis atuais, cotas, chuva, barragens e histórico visual continuam vindo das fontes públicas já usadas pelo app. A previsão e as estatísticas desta tela vêm do serviço centralizado."));
         String model = forecast.modelVersion == null || forecast.modelVersion.isEmpty()
                 ? "versão do modelo não informada" : forecast.modelVersion;
+        if (HydrologyForecastClient.MODEL_VERSION.equals(forecast.modelVersion)) {
+            model += " (fallback compatível; histórico e acurácia permanecem somente v2)";
+        }
         sourceCard.addView(body("Modelo informado pelo servidor: " + model + "."));
         TextView warn = body("Estimativa experimental; siga avisos oficiais. Para decisões de segurança, siga sempre os avisos da Defesa Civil (telefone 199).");
         warn.setTextColor(Color.rgb(153, 27, 27));

@@ -5,6 +5,7 @@ import org.junit.Test;
 
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.Assert.assertEquals;
@@ -14,8 +15,12 @@ import static org.junit.Assert.assertTrue;
 
 public class HydrologyForecastClientParserTest {
     private static String fixture() throws Exception {
+        return fixture("forecast-v2-live.json");
+    }
+
+    private static String fixture(String name) throws Exception {
         InputStream input = HydrologyForecastClientParserTest.class.getClassLoader()
-                .getResourceAsStream("forecast-v2-live.json");
+                .getResourceAsStream(name);
         assertNotNull(input);
         ByteArrayOutputStream output = new ByteArrayOutputStream();
         byte[] buffer = new byte[4096];
@@ -56,6 +61,80 @@ public class HydrologyForecastClientParserTest {
                 System.currentTimeMillis(), false);
         assertFalse(response.contractV2);
         assertTrue(response.latest.isEmpty());
+    }
+
+    @Test public void parsesAdaptiveV3AndNeverMixesRowsFromAnotherVersion() throws Exception {
+        JSONObject root = new JSONObject(fixture("forecast-v3-live.json"));
+        long now = DataRepository.parseTimestamp("2026-11-13T00:47:00.000Z");
+        HydrologyForecastClient.Response response = HydrologyForecastClient.parseResponse(root, now, false);
+
+        assertTrue(response.contractSupported);
+        assertTrue(response.contractV2); // alias mantido para controllers antigos
+        assertEquals("adaptive-v3", response.modelVersion);
+        assertEquals(60, response.accuracyDays);
+        assertEquals(60, response.retentionDays);
+        assertEquals(1, response.latest.size());
+        assertNotNull(response.latest.get(Bridge.DOM_TITO));
+        assertEquals("adaptive-v3", response.latest.get(Bridge.DOM_TITO).modelVersion);
+        assertEquals(1, response.history.size());
+        assertEquals("adaptive-v3", response.history.get(0).modelVersion);
+        assertEquals(1, response.accuracy.size());
+        assertEquals("adaptive-v3", response.accuracy.get(0).modelVersion);
+    }
+
+    @Test public void acceptsLegacyV2RowsWithoutRowModelVersion() throws Exception {
+        JSONObject root = new JSONObject(fixture("forecast-v2-compat.json"));
+        long now = DataRepository.parseTimestamp("2026-11-13T00:47:00.000Z");
+        HydrologyForecastClient.Response response = HydrologyForecastClient.parseResponse(root, now, false);
+
+        assertTrue(response.contractSupported);
+        assertEquals("deterministic-v2", response.modelVersion);
+        assertEquals(7, response.accuracyDays);
+        assertEquals(7, response.retentionDays);
+        assertEquals(1, response.latest.size());
+        assertEquals("deterministic-v2", response.latest.get(Bridge.DOM_TITO).modelVersion);
+        assertEquals(1, response.history.size());
+        assertEquals("deterministic-v2", response.history.get(0).modelVersion);
+        assertEquals(1, response.accuracy.size());
+        assertEquals("deterministic-v2", response.accuracy.get(0).modelVersion);
+    }
+
+    @Test public void adaptiveEmptyResponseRemainsSupportedButHasNoLocalFallback() throws Exception {
+        JSONObject root = new JSONObject(fixture("forecast-v3-empty.json"));
+        HydrologyForecastClient.Response response = HydrologyForecastClient.parseResponse(root,
+                DataRepository.parseTimestamp("2026-11-13T00:47:00.000Z"), false);
+
+        assertTrue(response.contractSupported);
+        assertEquals("adaptive-v3", response.modelVersion);
+        assertTrue(response.latest.isEmpty());
+        assertTrue(response.history.isEmpty());
+        assertTrue(response.accuracy.isEmpty());
+    }
+
+    @Test public void preservesSixtyDayMetadataWhenSerializingCache() throws Exception {
+        JSONObject root = new JSONObject(fixture("forecast-v3-retention60.json"));
+        HydrologyForecastClient.Response response = HydrologyForecastClient.parseResponse(root,
+                DataRepository.parseTimestamp("2026-11-13T00:47:00.000Z"), false);
+        Method toJson = HydrologyForecastClient.class.getDeclaredMethod("toJson",
+                HydrologyForecastClient.Response.class);
+        toJson.setAccessible(true);
+        JSONObject cached = (JSONObject) toJson.invoke(null, response);
+
+        assertEquals(60, cached.optInt("accuracy_days", -1));
+        assertEquals(60, cached.optInt("retention_days", -1));
+        assertEquals("adaptive-v3", cached.optString("model_version", ""));
+    }
+
+    @Test public void rejectsFutureModelVersionWithoutShowingRows() throws Exception {
+        JSONObject root = new JSONObject(fixture("forecast-model-future.json"));
+        HydrologyForecastClient.Response response = HydrologyForecastClient.parseResponse(root,
+                DataRepository.parseTimestamp("2026-11-13T00:47:00.000Z"), false);
+
+        assertFalse(response.contractSupported);
+        assertFalse(response.contractV2);
+        assertTrue(response.latest.isEmpty());
+        assertTrue(response.history.isEmpty());
+        assertTrue(response.accuracy.isEmpty());
     }
 
     @Test public void neverShowsOldOrFutureForecastAsCurrent() throws Exception {

@@ -91,14 +91,17 @@ public class ForecastCardView extends View {
         text(c, "PREVISÃO PARA AS PRÓXIMAS HORAS", left, dp(24), 10, Color.argb(220, 255, 255, 255), true);
 
         if (forecast == null || !forecast.available) {
-            String msg = loading ? "Calculando a previsão…" : "Previsão indisponível agora";
+            String msg = loading ? "Buscando previsão centralizada…" : "Previsão indisponível agora";
             text(c, msg, left, dp(66), 17, Color.WHITE, true);
-            text(c, "Atualize a tela para tentar de novo.", left, dp(88), 11, Color.argb(210, 255, 255, 255), false);
+            String reason = forecast != null && forecast.unavailableReason != null
+                    && !forecast.unavailableReason.isEmpty() ? forecast.unavailableReason
+                    : "Atualize a tela para tentar de novo.";
+            text(c, reason, left, dp(88), 10.5f, Color.argb(210, 255, 255, 255), false);
         } else {
             drawColumns(c, w);
         }
 
-        String cta = "Toque para ver como foi calculado  ›";
+        String cta = "Toque para ver detalhes do servidor  ›";
         float cw = measure(cta, 11, true);
         text(c, cta, w - cw - dp(16), h - dp(12), 11, Color.WHITE, true);
 
@@ -116,7 +119,6 @@ public class ForecastCardView extends View {
 
         for (int i = 0; i < 3; i++) {
             Forecast.Horizon hz = forecast.horizon(i + 1);
-            if (hz == null && i == 0) hz = fromMain();
             float x0 = left + i * (colW + gap);
             // Entrada: cada coluna sobe e aparece, uma depois da outra.
             float t = Math.max(0f, Math.min(1f, (now - appearAt - i * 140L) / 380f));
@@ -159,7 +161,8 @@ public class ForecastCardView extends View {
             center(c, delta, cx, chipTop + dp(13.5f), 11, Color.argb(alpha, 255, 255, 255), true);
 
             // Margem de erro.
-            center(c, String.format(BR, "± %.0f cm", hz.bandCm), cx, top + dp(89) + dy, 10,
+            String band = Double.isNaN(hz.bandCm) ? "margem não informada" : String.format(BR, "± %.0f cm", hz.bandCm);
+            center(c, band, cx, top + dp(89) + dy, 9.5f,
                     Color.argb((int) (205 * ease), 255, 255, 255), false);
         }
     }
@@ -167,18 +170,6 @@ public class ForecastCardView extends View {
     private void center(Canvas c, String value, float cx, float y, float size, int color, boolean bold) {
         float tw = measure(value, size, bold);
         text(c, value, cx - tw / 2f, y, size, color, bold);
-    }
-
-    /** Previsão gravada por versão anterior (sem horizontes): monta o +1 h a partir dos campos principais. */
-    private Forecast.Horizon fromMain() {
-        Forecast.Horizon h = new Forecast.Horizon();
-        h.hours = 1;
-        h.targetTime = forecast.targetTime;
-        h.predictedLevel = forecast.predictedLevel;
-        h.deltaCm = forecast.deltaCm;
-        h.bandCm = forecast.bandCm;
-        h.confidence = forecast.confidence;
-        return h;
     }
 
     private void drawWave(Canvas c, float w, float h, float baseY, float amp, float phase, int color) {

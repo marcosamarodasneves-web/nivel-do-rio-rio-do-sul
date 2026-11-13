@@ -2,12 +2,6 @@ plugins {
     id 'com.android.application'
 }
 
-// Registro das previsões no Supabase (tabela public.river_forecasts).
-// Pode colar os valores direto aqui ou passar por linha de comando / CI:
-//   gradle assembleDebug -PSUPABASE_URL=https://xxxx.supabase.co -PSUPABASE_ANON_KEY=eyJhbGciOi...
-def supabaseUrl = (project.findProperty('SUPABASE_URL') ?: System.getenv('SUPABASE_URL') ?: '').toString()
-def supabaseKey = (project.findProperty('SUPABASE_ANON_KEY') ?: System.getenv('SUPABASE_ANON_KEY') ?: '').toString()
-
 android {
     namespace 'br.com.riodosul.niveldorio'
     compileSdk 35
@@ -16,11 +10,9 @@ android {
         applicationId 'br.com.riodosul.niveldorio'
         minSdk 23
         targetSdk 35
-        versionCode 12
-        versionName '1.2.0'
+        versionCode 13
+        versionName '1.3.0'
         buildConfigField 'String', 'HYDROLOGY_API_BASE', '"https://riomonitor-ukmfechm.manus.space"'
-        buildConfigField 'String', 'SUPABASE_URL', "\"${supabaseUrl}\""
-        buildConfigField 'String', 'SUPABASE_ANON_KEY', "\"${supabaseKey}\""
     }
 
     buildFeatures {
@@ -34,8 +26,16 @@ android {
         }
     }
 
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
     }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20240303'
 }

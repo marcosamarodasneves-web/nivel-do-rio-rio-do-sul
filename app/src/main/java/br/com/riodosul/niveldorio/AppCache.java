@@ -37,6 +37,10 @@ public final class AppCache {
         try {
             Snapshot s = fromJson(new JSONObject(raw));
             s.fromCache = true;
+            // O cache geral não guarda histórico de previsões: apenas reidrata o último JSON
+            // centralizado, explicitamente marcado como resposta salva/offline.
+            HydrologyForecastClient.Response forecasts = HydrologyForecastClient.loadCached(c);
+            if (forecasts != null) HydrologyForecastClient.applyToSnapshot(s, forecasts, true);
             memory = s;
             return s;
         } catch (Exception e) {
@@ -70,8 +74,6 @@ public final class AppCache {
                 }
                 o.put("history", h);
             }
-            Forecast f = s.forecasts.get(b);
-            if (f != null) o.put("forecast", forecast(f));
             rivers.put(b.name(), o);
         }
         root.put("rivers", rivers);
@@ -151,67 +153,6 @@ public final class AppCache {
         return o;
     }
 
-    private static JSONObject forecast(Forecast f) throws Exception {
-        JSONObject o = new JSONObject();
-        o.put("ok", f.available);
-        o.put("why", f.unavailableReason);
-        putNumber(o, "cur", f.currentLevel);
-        putNumber(o, "pred", f.predictedLevel);
-        putNumber(o, "delta", f.deltaCm);
-        putNumber(o, "band", f.bandCm);
-        o.put("conf", f.confidence);
-        o.put("t0", f.baseTime);
-        o.put("t1", f.targetTime);
-        putNumber(o, "r60", f.rate60);
-        putNumber(o, "r180", f.rate180);
-        putNumber(o, "noise", f.noiseCm);
-        o.put("n", f.samplesUsed);
-        o.put("win", f.windowMinutes);
-        o.put("up", f.upstreamSummary);
-        o.put("dam", f.damSummary);
-        o.put("robs", f.rainObservedSummary);
-        o.put("rfc", f.rainForecastSummary);
-        o.put("bul", f.bulletinSummary);
-        putNumber(o, "rb1", f.rainBasin1hMm);
-        putNumber(o, "rb24", f.rainBasin24hMm);
-        putNumber(o, "rn1", f.rainNextHourMm);
-        putNumber(o, "rn2", f.rainNext2hMm);
-        putNumber(o, "rn3", f.rainNext3hMm);
-        JSONArray hz = new JSONArray();
-        for (Forecast.Horizon h : f.horizons) {
-            JSONObject j = new JSONObject();
-            j.put("h", h.hours);
-            j.put("t", h.targetTime);
-            putNumber(j, "pred", h.predictedLevel);
-            putNumber(j, "delta", h.deltaCm);
-            putNumber(j, "band", h.bandCm);
-            j.put("conf", h.confidence);
-            putNumber(j, "tr", h.trendCm);
-            putNumber(j, "up", h.upstreamCm);
-            putNumber(j, "dam", h.damCm);
-            putNumber(j, "ro", h.rainObservedCm);
-            putNumber(j, "rf", h.rainForecastCm);
-            hz.put(j);
-        }
-        o.put("horizons", hz);
-        o.put("prob", f.rainProbability);
-        o.put("cotas", cotas(f.cotas));
-        JSONArray factors = new JSONArray();
-        for (Forecast.Factor x : f.factors) {
-            JSONObject j = new JSONObject();
-            j.put("k", x.key);
-            j.put("t", x.title);
-            putNumber(j, "cm", x.cm);
-            j.put("d", x.detail);
-            factors.put(j);
-        }
-        o.put("factors", factors);
-        JSONArray notes = new JSONArray();
-        for (String n : f.notes) notes.put(n);
-        o.put("notes", notes);
-        return o;
-    }
-
     /** JSON não aceita NaN: valores desconhecidos simplesmente não são gravados. */
     private static void putNumber(JSONObject o, String key, double v) throws Exception {
         if (!Double.isNaN(v) && !Double.isInfinite(v)) o.put(key, v);
@@ -247,8 +188,6 @@ public final class AppCache {
                 }
                 s.riverHistory.put(b, list);
             }
-            JSONObject f = o.optJSONObject("forecast");
-            if (f != null) s.forecasts.put(b, forecast(b, f));
         }
         s.taio = dam(root.optJSONObject("taio"), "Taió");
         s.ituporanga = dam(root.optJSONObject("ituporanga"), "Ituporanga");
@@ -319,69 +258,5 @@ public final class AppCache {
         return d;
     }
 
-    private static Forecast forecast(Bridge b, JSONObject o) {
-        Forecast f = new Forecast();
-        f.bridge = b;
-        f.available = o.optBoolean("ok", false);
-        f.unavailableReason = o.optString("why", "");
-        f.currentLevel = o.optDouble("cur", Double.NaN);
-        f.predictedLevel = o.optDouble("pred", Double.NaN);
-        f.deltaCm = o.optDouble("delta", 0);
-        f.bandCm = o.optDouble("band", 0);
-        f.confidence = o.optInt("conf", 0);
-        f.baseTime = o.optLong("t0", 0L);
-        f.targetTime = o.optLong("t1", 0L);
-        f.rate60 = o.optDouble("r60", Double.NaN);
-        f.rate180 = o.optDouble("r180", Double.NaN);
-        f.noiseCm = o.optDouble("noise", Double.NaN);
-        f.samplesUsed = o.optInt("n", 0);
-        f.windowMinutes = o.optInt("win", 60);
-        f.upstreamSummary = o.optString("up", "");
-        f.damSummary = o.optString("dam", "");
-        f.rainObservedSummary = o.optString("robs", "");
-        f.rainForecastSummary = o.optString("rfc", "");
-        f.bulletinSummary = o.optString("bul", "");
-        f.rainBasin1hMm = o.optDouble("rb1", Double.NaN);
-        f.rainBasin24hMm = o.optDouble("rb24", Double.NaN);
-        f.rainNextHourMm = o.optDouble("rn1", Double.NaN);
-        f.rainNext2hMm = o.optDouble("rn2", Double.NaN);
-        f.rainNext3hMm = o.optDouble("rn3", Double.NaN);
-        JSONArray hz = o.optJSONArray("horizons");
-        if (hz != null) {
-            for (int i = 0; i < hz.length(); i++) {
-                JSONObject j = hz.optJSONObject(i);
-                if (j == null) continue;
-                Forecast.Horizon h = new Forecast.Horizon();
-                h.hours = j.optInt("h", i + 1);
-                h.targetTime = j.optLong("t", 0L);
-                h.predictedLevel = j.optDouble("pred", Double.NaN);
-                h.deltaCm = j.optDouble("delta", 0);
-                h.bandCm = j.optDouble("band", 0);
-                h.confidence = j.optInt("conf", 0);
-                h.trendCm = j.optDouble("tr", 0);
-                h.upstreamCm = j.optDouble("up", 0);
-                h.damCm = j.optDouble("dam", 0);
-                h.rainObservedCm = j.optDouble("ro", 0);
-                h.rainForecastCm = j.optDouble("rf", 0);
-                f.horizons.add(h);
-            }
-        }
-        f.rainProbability = o.optInt("prob", -1);
-        f.cotas = cotas(o.optJSONObject("cotas"));
-        JSONArray factors = o.optJSONArray("factors");
-        if (factors != null) {
-            for (int i = 0; i < factors.length(); i++) {
-                JSONObject j = factors.optJSONObject(i);
-                if (j != null) {
-                    f.factors.add(new Forecast.Factor(j.optString("k", ""), j.optString("t", ""),
-                            j.optDouble("cm", 0), j.optString("d", "")));
-                }
-            }
-        }
-        JSONArray notes = o.optJSONArray("notes");
-        if (notes != null) {
-            for (int i = 0; i < notes.length(); i++) f.notes.add(notes.optString(i, ""));
-        }
-        return f;
-    }
+
 }

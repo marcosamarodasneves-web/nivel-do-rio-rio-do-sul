@@ -32,7 +32,9 @@ public class Cotas {
 
     /** 0 = normal, 1 = atenção, 2 = alerta, 3 = emergência. */
     public int faixa(double nivel) {
-        if (nivel >= emergencia) return 3;
+        // Regra oficial: abaixo de 4,50 normal; 4,50 a <5,50 atenção;
+        // 5,50 a 6,50 (inclusive) alerta; acima de 6,50 emergência.
+        if (nivel > emergencia) return 3;
         if (nivel >= alerta) return 2;
         if (nivel >= atencao) return 1;
         return 0;

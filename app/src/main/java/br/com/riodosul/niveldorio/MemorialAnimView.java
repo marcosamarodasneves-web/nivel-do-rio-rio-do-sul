@@ -118,7 +118,8 @@ public class MemorialAnimView extends View {
         c.drawRect(card, paint);
         paint.setShader(null);
 
-        boolean ok = forecast != null && forecast.available;
+        boolean ok = forecast != null && forecast.available
+                && finite(forecast.currentLevel) && finite(forecast.predictedLevel);
         Cotas cotas = forecast == null ? new Cotas() : forecast.cotas;
         double top = cotas.topoDaEscala(ok ? forecast.currentLevel : Double.NaN, ok ? forecast.predictedLevel : Double.NaN);
         float tankTop = dp(96), tankBottom = h;
@@ -160,12 +161,12 @@ public class MemorialAnimView extends View {
         c.restore();
 
         float left = dp(18);
-        text(c, "PREVISÃO PARA A PRÓXIMA HORA", left, dp(26), 10, Color.argb(215, 255, 255, 255), true);
+        text(c, "PREVISÃO CENTRALIZADA · 1, 2 E 3 HORAS", left, dp(26), 9.5f, Color.argb(215, 255, 255, 255), true);
         if (forecast != null && forecast.bridge != null) {
             text(c, forecast.bridge.displayName + " — " + forecast.bridge.river, left, dp(42), 11, Color.argb(215, 255, 255, 255), false);
         }
         if (!ok) {
-            text(c, "Indisponível agora", left, dp(80), 24, Color.WHITE, true);
+            text(c, forecast == null || forecast.unavailableReason.isEmpty() ? "Indisponível agora" : forecast.unavailableReason, left, dp(80), 16, Color.WHITE, true);
             return;
         }
         String value = String.format(BR, "%.2f", forecast.predictedLevel);
@@ -441,11 +442,11 @@ public class MemorialAnimView extends View {
     // ------------------------------------------------------------------ chuva
 
     private void drawRain(Canvas c, float w, float h) {
-        double obs = forecast == null || Double.isNaN(forecast.rainBasin1hMm) ? 0 : forecast.rainBasin1hMm;
-        double next = forecast == null || Double.isNaN(forecast.rainNextHourMm) ? 0 : forecast.rainNextHourMm;
+        double obs = forecast == null ? Double.NaN : forecast.rainBasin1hMm;
+        double next = forecast == null ? Double.NaN : forecast.rainNextHourMm;
         float half = w / 2f;
-        drawSky(c, 0, half, h, obs, "Última hora", forecast == null || Double.isNaN(forecast.rainBasin1hMm) ? "sem dado" : String.format(BR, "%.1f mm", obs));
-        drawSky(c, half, half, h, next, "Próxima hora", forecast == null || Double.isNaN(forecast.rainNextHourMm) ? "sem dado" : String.format(BR, "%.1f mm", next));
+        drawSky(c, 0, half, h, obs, "Última hora", finite(obs) ? String.format(BR, "%.1f mm", obs) : "sem dado");
+        drawSky(c, half, half, h, next, "Próxima hora", finite(next) ? String.format(BR, "%.1f mm", next) : "sem dado");
         paint.setStyle(Paint.Style.STROKE);
         paint.setStrokeWidth(dp(1));
         paint.setColor(Color.rgb(226, 232, 240));
@@ -456,7 +457,7 @@ public class MemorialAnimView extends View {
         float cx = x + width / 2f;
         textCentered(c, title, cx, dp(14), 10, GREY, true);
         float cloudY = dp(44);
-        boolean rainy = mm >= 0.1;
+        boolean rainy = finite(mm) && mm >= 0.1;
         if (!rainy) {
             // Sem chuva: sol com raios girando atrás da nuvem.
             float sx = cx + dp(16), sy = cloudY - dp(8);
@@ -551,6 +552,9 @@ public class MemorialAnimView extends View {
         text(c, total, w - paint.measureText(total), ty, 13, PURPLE, true);
     }
 
+    private static boolean finite(double value) {
+        return !Double.isNaN(value) && !Double.isInfinite(value);
+    }
     private static String signed(double cm) {
         if (Math.abs(cm) < 0.05) return "0,0 cm";
         return (cm > 0 ? "+" : "−") + String.format(BR, "%.1f cm", Math.abs(cm));

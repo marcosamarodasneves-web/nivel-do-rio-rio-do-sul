@@ -10,6 +10,8 @@ public class Snapshot {
     public final EnumMap<Bridge, RiverReading> rivers = new EnumMap<>(Bridge.class);
     public final EnumMap<Bridge, List<Sample>> riverHistory = new EnumMap<>(Bridge.class);
     public final EnumMap<Bridge, Forecast> forecasts = new EnumMap<>(Bridge.class);
+    /** DTO de histórico/acurácia vindo do servidor; nunca é persistido em banco local. */
+    public HydrologyForecastClient.Response forecastResponse;
     public DamReading taio;
     public DamReading ituporanga;
     public long fetchedAt;

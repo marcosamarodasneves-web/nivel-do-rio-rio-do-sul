@@ -140,7 +140,15 @@ public class MainActivity extends Activity {
                 Snapshot s;
                 int count = -1;
                 try {
-                    s = DataRepository.fetchOrCache(MainActivity.this);
+                    s = DataRepository.fetchOrCache(MainActivity.this, new DataRepository.ForecastUpdateListener() {
+                        @Override public void onForecastUpdated(final Snapshot forecastSnapshot) {
+                            runOnUiThread(new Runnable() {
+                                @Override public void run() {
+                                    if (!destroyed && forecastSnapshot != null) render(forecastSnapshot);
+                                }
+                            });
+                        }
+                    });
                     count = DailyCounter.update(MainActivity.this);
                 } catch (Throwable t) {
                     // Nenhuma falha de rede ou de dados pode fechar o app.

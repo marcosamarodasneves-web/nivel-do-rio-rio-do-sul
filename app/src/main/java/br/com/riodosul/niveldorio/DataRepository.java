@@ -42,50 +42,69 @@ public final class DataRepository {
             API_BASE + "/public/stations/live?city_id=" + CITY_ID + "&_v=2";
     private static final String DAMS_URL =
             API_BASE + "/public/dams?city_id=" + CITY_ID;
-    private static final String BULLETIN_URL =
-            API_BASE + "/public/cities/" + CITY_ID + "/forecast/bulletin";
-
-    /** Pontos da bacia: Rio do Sul, Taió, Ituporanga, Pouso Redondo e Alfredo Wagner. */
-    private static final String WEATHER_URL =
-            "https://api.open-meteo.com/v1/forecast"
-                    + "?latitude=-27.2142,-27.1164,-27.4144,-27.2581,-27.7003"
-                    + "&longitude=-49.6431,-49.9989,-49.6017,-49.9342,-49.3336"
-                    + "&hourly=precipitation,precipitation_probability"
-                    + "&past_hours=1&forecast_hours=5&timeformat=unixtime&timezone=GMT";
-
-    /** Estações a montante usadas só na previsão (nome sem acento, como vem no painel). */
-    private static final String UP_LAURENTINO = "laurentino";
-    private static final String UP_AGRONOMICA = "agronomica";
-
     private static final long HOUR = 3600000L;
     private static final Locale BR = new Locale("pt", "BR");
 
     private DataRepository() {}
 
+    public interface ForecastUpdateListener {
+        void onForecastUpdated(Snapshot snapshot);
+    }
+
     public static Snapshot fetchOrCache(Context context) {
+        return fetchOrCache(context, null);
+    }
+
+    public static Snapshot fetchOrCache(Context context, ForecastUpdateListener listener) {
         try {
-            return fetch(context);
+            return fetch(context, listener);
         } catch (Exception e) {
             String error = friendlyError(e);
             Snapshot cached = AppCache.load(context);
             if (cached != null) {
                 cached.fromCache = true;
                 cached.errorMessage = error;
-                // Mesmo sem rede dá para conferir previsões de horas atrás com o histórico guardado.
-                try {
-                    ForecastStore.recordAndResolve(context, cached);
-                } catch (Exception ignored) {}
+                HydrologyForecastClient.Response forecasts = HydrologyForecastClient.loadCached(context);
+                if (forecasts != null) HydrologyForecastClient.applyToSnapshot(cached, forecasts, true);
+                if (listener != null) listener.onForecastUpdated(cached);
                 return cached;
             }
             Snapshot empty = new Snapshot();
             empty.errorMessage = error;
+            HydrologyForecastClient.Response forecasts = HydrologyForecastClient.loadCached(context);
+            if (forecasts != null) HydrologyForecastClient.applyToSnapshot(empty, forecasts, true);
+            if (listener != null) listener.onForecastUpdated(empty);
             return empty;
         }
     }
 
     public static Snapshot fetch(Context context) throws Exception {
+        return fetch(context, null);
+    }
+
+    public static Snapshot fetch(Context context, final ForecastUpdateListener forecastListener) throws Exception {
         final long now = System.currentTimeMillis();
         final Snapshot s = new Snapshot();
+        final Object forecastLock = new Object();
+        final HydrologyForecastClient.Response[] remoteForecast = new HydrologyForecastClient.Response[1];
+        final boolean[] readingsReady = { false };
+
+        // GET de previsão começa junto da leitura do painel e nunca bloqueia os níveis diretos.
+        HydrologyForecastClient.fetchAsync(context, new HydrologyForecastClient.Callback() {
+            @Override public void onComplete(HydrologyForecastClient.Response response, Exception error) {
+                if (response == null) return;
+                synchronized (forecastLock) {
+                    remoteForecast[0] = response;
+                    if (!readingsReady[0]) return;
+                    Snapshot latest = AppCache.load(context);
+                    if (latest == null) latest = s;
+                    HydrologyForecastClient.applyToSnapshot(latest, response, false);
+                    // Falha da previsão não deve marcar a leitura direta como falha.
+                    AppCache.save(context, latest);
+                    if (forecastListener != null) forecastListener.onForecastUpdated(latest);
+                }
+            }
+        });
 
         // 1) Painel: nível atual, cotas e chuva de todas as estações da cidade.
         JSONArray stations = null;
@@ -115,7 +134,6 @@ public final class DataRepository {
         ExecutorService pool = Executors.newFixedThreadPool(8);
         try {
             final String start = isoUtc(now - 24 * HOUR), end = isoUtc(now);
-            final String startShort = isoUtc(now - 4 * HOUR);
 
             List<Future<List<Sample>>> histories = new ArrayList<>();
             for (final Bridge b : Bridge.values()) {
@@ -126,22 +144,8 @@ public final class DataRepository {
                     }
                 }));
             }
-            final String laurentinoId = stationIdByName(stations, UP_LAURENTINO);
-            final String agronomicaId = stationIdByName(stations, UP_AGRONOMICA);
-            Future<List<Sample>> laurentino = laurentinoId == null ? null : pool.submit(new Callable<List<Sample>>() {
-                @Override public List<Sample> call() throws Exception { return loadHistory(laurentinoId, startShort, end); }
-            });
-            Future<List<Sample>> agronomica = agronomicaId == null ? null : pool.submit(new Callable<List<Sample>>() {
-                @Override public List<Sample> call() throws Exception { return loadHistory(agronomicaId, startShort, end); }
-            });
             Future<Object> dams = pool.submit(new Callable<Object>() {
                 @Override public Object call() throws Exception { return loadJson(DAMS_URL + "&_t=" + now); }
-            });
-            Future<Object> bulletin = pool.submit(new Callable<Object>() {
-                @Override public Object call() throws Exception { return loadJson(BULLETIN_URL); }
-            });
-            Future<Object> weather = pool.submit(new Callable<Object>() {
-                @Override public Object call() throws Exception { return loadJson(WEATHER_URL); }
             });
             Future<Object> stationList = pool.submit(new Callable<Object>() {
                 @Override public Object call() throws Exception { return loadJson(STATIONS_LIST_URL); }
@@ -217,48 +221,6 @@ public final class DataRepository {
                 // A grade de chuva por município é complemento; a tela segue sem ela.
             }
 
-            // 3) Previsão de 1, 2 e 3 horas para cada ponte.
-            double[] rain = basinRain(stations);
-            double[] wx = parseWeather(await(weather), now);
-            String bulletinText = parseBulletin(await(bulletin), now);
-            List<Sample> lau = await(laurentino), agr = await(agronomica);
-            for (Bridge b : bridges) {
-                RiverReading r = s.rivers.get(b);
-                ForecastEngine.Inputs in = new ForecastEngine.Inputs();
-                in.bridge = b;
-                in.now = now;
-                in.samples = full.get(b);
-                if (r != null) {
-                    in.currentLevel = r.levelMeters;
-                    in.readingMillis = r.readingMillis;
-                    in.cotas = r.cotas;
-                }
-                if (b == Bridge.DOM_TITO) {
-                    in.upstream.add(new ForecastEngine.Upstream("Itajaí do Sul (" + Bridge.RICARDO_KANITZ.displayName + ")",
-                            full.get(Bridge.RICARDO_KANITZ)));
-                    in.upstream.add(new ForecastEngine.Upstream("Itajaí do Oeste (" + Bridge.BR470.displayName + ")",
-                            full.get(Bridge.BR470)));
-                } else if (b == Bridge.BR470) {
-                    in.upstream.add(new ForecastEngine.Upstream("Itajaí do Oeste em Laurentino", lau));
-                    in.upstream.add(new ForecastEngine.Upstream("Rio Trombudo em Agronômica", agr));
-                }
-                in.taio = s.taio;
-                in.ituporanga = s.ituporanga;
-                in.rainBasin1hMean = rain[0];
-                in.rainBasin1hMax = rain[1];
-                in.rainBasin24hMean = rain[2];
-                in.rainStations = (int) rain[3];
-                in.rainNextHourMm = wx[0];
-                in.rainNext2hMm = wx[1];
-                in.rainNext3hMm = wx[2];
-                in.rainProbability = (int) wx[3];
-                in.bulletin = bulletinText;
-                try {
-                    s.forecasts.put(b, ForecastEngine.compute(in));
-                } catch (Exception ignored) {
-                    // A previsão nunca pode impedir a exibição da leitura atual.
-                }
-            }
         } finally {
             pool.shutdownNow();
         }
@@ -269,18 +231,14 @@ public final class DataRepository {
         for (RiverReading r : s.rivers.values()) {
             HistoryStore.add(context, r.bridge, r.levelMeters);
         }
-        AppCache.save(context, s);
-
-        // Registro das previsões de 1, 2 e 3 h: espelho local (SQLite) + Supabase.
-        try {
-            ForecastStore.recordAndResolve(context, s);
-        } catch (Exception ignored) {
-            // Gravar a previsão é histórico: nunca pode atrapalhar a tela.
+        synchronized (forecastLock) {
+            HydrologyForecastClient.Response response = remoteForecast[0];
+            boolean cached = response == null;
+            if (cached) response = HydrologyForecastClient.loadCached(context);
+            if (response != null) HydrologyForecastClient.applyToSnapshot(s, response, cached);
+            AppCache.save(context, s);
+            readingsReady[0] = true;
         }
-        try {
-            SupabaseForecast.sync(context);
-        } catch (Exception ignored) {}
-
         return s;
     }
 
@@ -435,18 +393,6 @@ public final class DataRepository {
         return level != null && level > 0;
     }
 
-    private static String stationIdByName(JSONArray stations, String key) {
-        if (stations == null) return null;
-        for (int i = 0; i < stations.length(); i++) {
-            JSONObject o = stations.optJSONObject(i);
-            if (o != null && normalize(o.optString("name", "")).contains(key) && hasLevel(o)) {
-                String id = o.optString("station_id", "");
-                if (!id.isEmpty()) return id;
-            }
-        }
-        return null;
-    }
-
     /** Cotas oficiais publicadas pela Defesa Civil para a estação ("band_thresholds"). */
     private static Cotas parseCotas(JSONObject station) {
         Cotas padrao = new Cotas();
@@ -510,64 +456,6 @@ public final class DataRepository {
     }
 
     // ---------------------------------------------------------------- chuva
-
-    /** {média 1 h, máximo 1 h, média 24 h, nº de pluviômetros} das estações da bacia. */
-    private static double[] basinRain(JSONArray stations) {
-        double sum1 = 0, max1 = 0, sum24 = 0;
-        int n = 0;
-        if (stations != null) {
-            for (int i = 0; i < stations.length(); i++) {
-                JSONObject o = stations.optJSONObject(i);
-                if (o == null || o.optInt("rainfall_sensor", 0) != 1 || o.isNull("rainfall_1h")) continue;
-                double r1 = o.optDouble("rainfall_1h", Double.NaN);
-                if (Double.isNaN(r1) || r1 < 0) continue;
-                double r24 = o.optDouble("rainfall_24h", 0);
-                sum1 += r1;
-                max1 = Math.max(max1, r1);
-                sum24 += Double.isNaN(r24) ? 0 : Math.max(0, r24);
-                n++;
-            }
-        }
-        if (n == 0) return new double[] { Double.NaN, Double.NaN, Double.NaN, 0 };
-        return new double[] { sum1 / n, max1, sum24 / n, n };
-    }
-
-    /** {mm na próxima hora, em 2 h, em 3 h, probabilidade máxima (%)} — média dos pontos da bacia. */
-    private static double[] parseWeather(Object root, long now) {
-        double[] none = { Double.NaN, Double.NaN, Double.NaN, -1 };
-        if (root == null) return none;
-        JSONArray places = root instanceof JSONArray ? (JSONArray) root : new JSONArray().put(root);
-        double sum1 = 0, sum2 = 0, sum3 = 0;
-        int n = 0, prob = -1;
-        for (int p = 0; p < places.length(); p++) {
-            JSONObject hourly = places.optJSONObject(p) == null ? null : places.optJSONObject(p).optJSONObject("hourly");
-            if (hourly == null) continue;
-            JSONArray time = hourly.optJSONArray("time");
-            JSONArray rain = hourly.optJSONArray("precipitation");
-            JSONArray pp = hourly.optJSONArray("precipitation_probability");
-            if (time == null || rain == null) continue;
-            double[] acc = new double[3];
-            int used = 0;
-            for (int i = 0; i < time.length() && used < 3; i++) {
-                // Cada valor é o acumulado da hora que termina no horário informado.
-                long endOfHour = time.optLong(i, 0) * 1000L;
-                if (endOfHour <= now) continue;
-                double mm = rain.optDouble(i, Double.NaN);
-                if (Double.isNaN(mm)) continue;
-                if (pp != null && !pp.isNull(i)) prob = Math.max(prob, pp.optInt(i, -1));
-                for (int k = used; k < 3; k++) acc[k] += mm;
-                used++;
-            }
-            if (used > 0) {
-                sum1 += acc[0];
-                sum2 += acc[1];
-                sum3 += acc[2];
-                n++;
-            }
-        }
-        if (n == 0) return none;
-        return new double[] { sum1 / n, sum2 / n, sum3 / n, prob };
-    }
 
     // ---------------------------------------------------------------- chuva por município
 
@@ -686,35 +574,6 @@ public final class DataRepository {
                 m.source = MunicipalRain.FONTE_ESTIMATIVA;
             }
         }
-    }
-
-    /** Resumo do boletim diário da Defesa Civil de Rio do Sul para hoje. */
-    private static String parseBulletin(Object root, long now) {
-        if (!(root instanceof JSONObject)) return "";
-        JSONArray days = ((JSONObject) root).optJSONArray("days");
-        if (days == null) return "";
-        SimpleDateFormat fmt = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
-        fmt.setTimeZone(TimeZone.getTimeZone("America/Sao_Paulo"));
-        String today = fmt.format(new Date(now));
-        for (int i = 0; i < days.length(); i++) {
-            JSONObject day = days.optJSONObject(i);
-            if (day == null || !today.equals(day.optString("forecast_date", ""))) continue;
-            StringBuilder sb = new StringBuilder();
-            JSONObject band = day.optJSONObject("precipitation_band");
-            String label = band == null ? "" : band.optString("label", "");
-            if (!label.isEmpty()) sb.append(label);
-            if (!day.isNull("rainfall_mm")) {
-                if (sb.length() > 0) sb.append(" — ");
-                sb.append(String.format(BR, "até %.0f mm no dia", day.optDouble("rainfall_max_mm", day.optDouble("rainfall_mm", 0))));
-            }
-            String summary = day.isNull("summary") ? "" : day.optString("summary", "").trim();
-            if (!summary.isEmpty()) {
-                if (sb.length() > 0) sb.append(". ");
-                sb.append(summary);
-            }
-            return sb.toString();
-        }
-        return "";
     }
 
     // ---------------------------------------------------------------- barragens

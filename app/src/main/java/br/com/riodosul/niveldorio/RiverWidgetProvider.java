@@ -128,10 +128,10 @@ public class RiverWidgetProvider extends AppWidgetProvider {
                 ChartRenderer.render(samples, r == null ? null : r.cotas, f, 600, 170));
 
         String taio = s != null && s.taio != null
-                ? String.format(BR, "Taió %.1f%% • %d/%d", s.taio.capacityPercent, s.taio.gatesOpen, s.taio.gatesTotal)
+                ? String.format(BR, "Taió %.1f%% • %d/%d", s.taio.capacityPercent, s.taio.mainOpen(), s.taio.mainTotal())
                 : "Taió --";
         String itup = s != null && s.ituporanga != null
-                ? String.format(BR, "Ituporanga %.1f%% • %d/%d", s.ituporanga.capacityPercent, s.ituporanga.gatesOpen, s.ituporanga.gatesTotal)
+                ? String.format(BR, "Ituporanga %.1f%% • %d/%d", s.ituporanga.capacityPercent, s.ituporanga.mainOpen(), s.ituporanga.mainTotal())
                 : "Ituporanga --";
         rv.setTextViewText(R.id.widget_dams, "Barragens: " + taio + "  •  " + itup);
 

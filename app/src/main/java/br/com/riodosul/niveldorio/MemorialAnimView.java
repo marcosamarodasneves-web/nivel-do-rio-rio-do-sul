@@ -436,7 +436,8 @@ public class MemorialAnimView extends View {
                 }
             }
         }
-        textCentered(c, d.gatesOpen + " de " + d.gatesTotal + " comportas abertas", x + width / 2f, h - dp(4), 9, GREY, true);
+        textCentered(c, d.mainOpen() + " de " + d.mainTotal() + " comportas abertas"
+                + (d.auxiliaryText().isEmpty() ? "" : " + " + d.auxiliaryText()), x + width / 2f, h - dp(4), 9, GREY, true);
     }
 
     // ------------------------------------------------------------------ chuva

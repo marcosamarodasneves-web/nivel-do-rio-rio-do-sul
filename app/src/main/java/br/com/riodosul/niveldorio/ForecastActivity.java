@@ -364,6 +364,9 @@ public class ForecastActivity extends Activity {
         LinearLayout sourceCard = card();
         sourceCard.addView(label("Fonte e limites", 15, INK, true));
         sourceCard.addView(body("Níveis atuais, cotas, chuva, barragens e histórico visual continuam vindo das fontes públicas já usadas pelo app. A previsão e as estatísticas desta tela vêm do serviço centralizado."));
+        sourceCard.addView(body("Os níveis dos rios vêm da telemetria da Defesa Civil de SC, e as previsões são calculadas e conferidas "
+                + "nessa mesma série. O site da Defesa Civil de Rio do Sul usa outra fonte de telemetria, então a cota "
+                + "pode diferir alguns centímetros da mostrada aqui."));
         String model = forecast.modelVersion == null || forecast.modelVersion.isEmpty()
                 ? "versão do modelo não informada" : forecast.modelVersion;
         if (HydrologyForecastClient.MODEL_VERSION.equals(forecast.modelVersion)) {

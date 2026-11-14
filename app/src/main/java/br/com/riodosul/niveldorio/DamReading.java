@@ -52,6 +52,59 @@ public class DamReading {
         this.gateStates = gateStates == null ? null : gateStates.clone();
     }
 
+    /** Nome de cada comporta na mesma ordem de gateStates (C1, C2... CE), quando a API informa. */
+    public String[] gateNames;
+
+    /**
+     * Comporta auxiliar é a que não segue a numeração das comportas de fundo (C1, C2...), como a "CE".
+     * Regra genérica: nome sem número. Se a Defesa Civil acrescentar outra (por exemplo "CD"), ela cai aqui sozinha.
+     */
+    public static boolean isAuxiliaryName(String name) {
+        if (name == null) return false;
+        String n = name.trim();
+        if (n.isEmpty()) return false;
+        for (int i = 0; i < n.length(); i++) if (Character.isDigit(n.charAt(i))) return false;
+        return true;
+    }
+
+    private boolean hasNames() {
+        return gateNames != null && gateStates != null && gateNames.length == gateStates.length;
+    }
+
+    /** Comportas de fundo (numeradas) no total. Sem nomes, usa o total geral. */
+    public int mainTotal() {
+        if (!hasNames()) return gatesTotal;
+        int n = 0;
+        for (String name : gateNames) if (!isAuxiliaryName(name)) n++;
+        return n;
+    }
+
+    /** Comportas de fundo (numeradas) abertas. Sem nomes, usa o total geral de abertas. */
+    public int mainOpen() {
+        if (!hasNames()) return gatesOpen;
+        int n = 0;
+        for (int i = 0; i < gateNames.length; i++) if (!isAuxiliaryName(gateNames[i]) && gateStates[i]) n++;
+        return n;
+    }
+
+    /** Estado das comportas auxiliares, por exemplo "CE fechada" (vazio quando não há nenhuma). */
+    public String auxiliaryText() {
+        if (!hasNames()) return "";
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < gateNames.length; i++) {
+            if (!isAuxiliaryName(gateNames[i])) continue;
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(gateNames[i].trim()).append(gateStates[i] ? " aberta" : " fechada");
+        }
+        return sb.toString();
+    }
+
+    /** "7/7 abertas" mais, se houver, " + CE fechada". */
+    public String gatesLabel() {
+        String aux = auxiliaryText();
+        return mainOpen() + "/" + mainTotal() + " abertas" + (aux.isEmpty() ? "" : " + " + aux);
+    }
+
     /** Há série de 24 h suficiente para desenhar o gráfico da barragem. */
     public boolean hasHistory() {
         return history.size() >= 2;

@@ -120,6 +120,14 @@ public final class AppCache {
             for (boolean open : d.gateStates) states.append(open ? '1' : '0');
             o.put("states", states.toString());
         }
+        if (d.gateNames != null) {
+            StringBuilder names = new StringBuilder();
+            for (int i = 0; i < d.gateNames.length; i++) {
+                if (i > 0) names.append('|');
+                names.append(d.gateNames[i] == null ? "" : d.gateNames[i].replace("|", ""));
+            }
+            o.put("gnames", names.toString());
+        }
         putNumber(o, "chg", d.levelChange3hCm);
         o.put("op24", d.gatesOpened24h);
         o.put("cl24", d.gatesClosed24h);
@@ -227,6 +235,8 @@ public final class AppCache {
         }
         DamReading d = new DamReading(o.optString("name", fallbackName), o.optDouble("level", 0), o.optDouble("pct", 0),
                 o.optInt("open", 0), o.optInt("total", 0), o.optString("age", ""), states);
+        String rawNames = o.optString("gnames", "");
+        if (!rawNames.isEmpty()) d.gateNames = rawNames.split("\\|", -1);
         d.levelChange3hCm = o.optDouble("chg", Double.NaN);
         d.gatesOpened24h = o.optInt("op24", 0);
         d.gatesClosed24h = o.optInt("cl24", 0);

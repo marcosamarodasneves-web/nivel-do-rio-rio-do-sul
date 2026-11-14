@@ -216,7 +216,7 @@ public class DamSummaryView extends View {
         paint.setColor(Color.argb(90, 255, 255, 255));
         c.drawRoundRect(new RectF(Math.max(left + dp(12), shine - dp(10)), dp(83), Math.min(barEnd, shine + dp(10)), dp(91)), dp(4), dp(4), paint);
 
-        text(c, "Comportas  " + d.gatesOpen + "/" + d.gatesTotal + " abertas", left + dp(12), dp(112), 10, Color.rgb(44, 55, 65), true);
+        text(c, "Comportas  " + d.gatesLabel(), left + dp(12), dp(112), 10, Color.rgb(44, 55, 65), true);
         drawGates(c, left + dp(12), dp(120), width - dp(24), d);
 
         // Aviso de que o card abre o histórico em dois toques.

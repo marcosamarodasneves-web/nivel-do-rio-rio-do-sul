@@ -80,7 +80,7 @@ public class DamActivity extends Activity {
                 tile("Nível do reservatório", String.format(BR, "%.2f m", dam.levelMeters), stateColor(dam)),
                 tile("Ocupação", String.format(BR, "%.1f%%", dam.capacityPercent), stateColor(dam)));
         addKpiRow(kpis,
-                tile("Comportas", dam.gatesOpen + "/" + Math.max(0, dam.gatesTotal) + " abertas",
+                tile("Comportas", dam.gatesLabel(),
                         dam.gatesOpen > 0 ? Color.rgb(0, 121, 107) : GREY),
                 tile("Variação em 3 h", Double.isNaN(dam.levelChange3hCm) ? "—"
                                 : String.format(BR, "%s%.0f cm", dam.levelChange3hCm >= 0 ? "+" : "−",
@@ -192,6 +192,7 @@ public class DamActivity extends Activity {
         sb.append(String.format(BR, "%d abertura%s e %d fechamento%s de comporta nas últimas 24 h.",
                 d.gatesOpened24h, d.gatesOpened24h == 1 ? "" : "s",
                 d.gatesClosed24h, d.gatesClosed24h == 1 ? "" : "s"));
+        sb.append(" Comporta acrescentada ou removida da lista pela Defesa Civil não conta como manobra.");
         if (!Double.isNaN(d.hoursSinceLastGateEvent)) {
             sb.append(String.format(BR, " A última manobra foi há %.1f h.", d.hoursSinceLastGateEvent));
         } else {

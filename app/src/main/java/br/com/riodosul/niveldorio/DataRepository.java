@@ -590,6 +590,7 @@ public final class DataRepository {
         Integer total = firstInt(dam, "comportas_total", "gates_total", "total_gates", "gate_count", "gates_count");
 
         boolean[] gateStates = gateStatesFromArray(dam);
+        String[] gateNames = gateNamesFromArray(dam);
         if (gateStates != null) {
             int count = 0;
             for (boolean g : gateStates) if (g) count++;
@@ -604,6 +605,7 @@ public final class DataRepository {
 
         DamReading d = new DamReading(name, level == null ? 0.0 : level, pct == null ? 0.0 : pct,
                 Math.min(open, total), total, formatReadingTime(readingAt), gateStates);
+        if (gateNames != null && gateStates != null && gateNames.length == gateStates.length) d.gateNames = gateNames;
         String sid = firstString(dam, "station_id", "id");
         d.stationId = sid == null ? "" : sid;
         d.latitude = dam.optDouble("latitude", Double.NaN);
@@ -617,7 +619,41 @@ public final class DataRepository {
         JSONObject o = (JSONObject) root;
         JSONArray events = o.optJSONArray("events");
         long lastEvent = 0;
-        if (events != null) {
+        JSONArray gateSeries = o.optJSONArray("series");
+        // Manobra = mudança de comportas abertas entre duas leituras com a MESMA lista de comportas.
+        // Quando a Defesa Civil acrescenta ou remove uma comporta (total muda), isso não é abertura nem fechamento.
+        boolean fromSeries = false;
+        if (gateSeries != null) {
+            List<long[]> pts = new ArrayList<>(); // {tempo, abertas, total}
+            for (int i = 0; i < gateSeries.length(); i++) {
+                JSONObject p = gateSeries.optJSONObject(i);
+                if (p == null || !p.has("gates_open") || p.isNull("gates_open")) continue;
+                long t = parseTimestamp(p.optString("time", ""));
+                if (t <= 0) continue;
+                long known = Math.round(p.optDouble("gates_known", p.optDouble("gates_total", -1)));
+                pts.add(new long[] { t, Math.round(p.optDouble("gates_open", 0)), known });
+            }
+            if (pts.size() >= 2) {
+                fromSeries = true;
+                Collections.sort(pts, (a, b) -> Long.compare(a[0], b[0]));
+                for (int i = 1; i < pts.size(); i++) {
+                    long[] prev = pts.get(i - 1), cur = pts.get(i);
+                    long t = cur[0];
+                    if (now - t > 24 * HOUR || cur[2] != prev[2] || cur[1] == prev[1]) continue;
+                    int units = (int) Math.abs(cur[1] - prev[1]);
+                    boolean opened = cur[1] > prev[1];
+                    if (opened) dam.gatesOpened24h += units;
+                    else dam.gatesClosed24h += units;
+                    long age = now - t;
+                    if (age >= 2 * HOUR && age <= 12 * HOUR) {
+                        if (opened) dam.gatesOpenedArriving += units;
+                        else dam.gatesClosedArriving += units;
+                    }
+                    lastEvent = Math.max(lastEvent, t);
+                }
+            }
+        }
+        if (!fromSeries && events != null) {
             for (int i = 0; i < events.length(); i++) {
                 JSONObject e = events.optJSONObject(i);
                 if (e == null) continue;
@@ -742,6 +778,23 @@ public final class DataRepository {
         if (status == null) return false;
         String x = status.toLowerCase(Locale.ROOT);
         return x.contains("open") || x.contains("abert");
+    }
+
+    /** Nome de cada comporta (C1, C2... CE), na mesma ordem de gateStatesFromArray. */
+    private static String[] gateNamesFromArray(JSONObject dam) {
+        String[] keys = { "comportas", "gates", "sluice_gates", "floodgates" };
+        for (String key : keys) {
+            JSONArray arr = dam.optJSONArray(key);
+            if (arr == null) continue;
+            String[] names = new String[arr.length()];
+            for (int i = 0; i < arr.length(); i++) {
+                Object item = arr.opt(i);
+                String n = item instanceof JSONObject ? firstString((JSONObject) item, "nome", "name", "label") : null;
+                names[i] = n == null ? "" : n;
+            }
+            return names;
+        }
+        return null;
     }
 
     private static boolean[] gateStatesFromArray(JSONObject dam) {
